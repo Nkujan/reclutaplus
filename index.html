@@ -24,15 +24,7 @@
   </style>
 </head>
 <body>
-  <div id="root">
-    <div style="min-height:100vh;background:#1E3A5F;display:flex;align-items:center;justify-content:center">
-      <div style="text-align:center;color:#fff">
-        <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#14B8A6;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px"></div>
-        <div style="font-size:18px;font-weight:700">ReclutaPlus</div>
-        <div style="font-size:13px;opacity:0.5;margin-top:6px">Iniciando sistema...</div>
-      </div>
-    </div>
-  </div>
+  <div id="root"></div>
 
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef } = React;
@@ -970,7 +962,7 @@ function generateFormHTML(data={},meta={}) {
 /* ═══ ROOT APP ═══ */
 function App() {
   const [user,setUser]=useState(null);
-  const [loading,setLoading]=useState(true);
+  const [loading,setLoading]=useState(false);
   const [view,setView]=useState("dashboard");
   const [candidates,setCandidates]=useState([]);
   const [companies,setCompanies]=useState([]);
@@ -980,35 +972,40 @@ function App() {
   const refreshCompanies=async()=>{const d=await db.get("users","role=eq.company");setCompanies(d.map(mapUser));};
   const refreshForms=async()=>{const d=await db.get("form_submissions","order=submitted_at.desc");setFormSubmissions(d.map(mapForm));};
 
-  useEffect(()=>{
-    (async()=>{
-      try {
-        await Promise.all([
-          refreshCandidates().catch(e=>{console.error('cands:',e);}),
-          refreshCompanies().catch(e=>{console.error('comps:',e);}),
-          refreshForms().catch(e=>{console.error('forms:',e);})
-        ]);
-      } catch(e){ console.error('Init error:',e); }
-      finally { setLoading(false); }
-    })();
-  },[]);
+  // No initial data load — data fetches after login
 
   const handleLogin=async(username,password)=>{
     const users=await db.get("users",`username=eq.${username}&password=eq.${password}`);
     if(!users?.length)return false;
     const u=mapUser(users[0]);
     if(u.active===false){alert("Esta cuenta está desactivada. Contacta a la consultora.");return false;}
-    setUser(u);setView(u.role==="company"?"company-form":"dashboard");return true;
+    setUser(u);
+    setView(u.role==="company"?"company-form":"dashboard");
+    if(u.role==="admin"){
+      setLoading(true);
+      Promise.all([
+        refreshCandidates().catch(()=>{}),
+        refreshCompanies().catch(()=>{}),
+        refreshForms().catch(()=>{})
+      ]).finally(()=>setLoading(false));
+    }
+    return true;
   };
 
   const handleLogout=()=>{setUser(null);setView("dashboard");};
 
-  if(loading)return(
-    <div style={{minHeight:"100vh",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{textAlign:"center",color:"#fff"}}>
-        <Spinner size={40}/>
-        <div style={{fontSize:17,fontWeight:600,marginTop:16}}>ReclutaPlus</div>
-        <div style={{fontSize:13,opacity:0.5,marginTop:6}}>Cargando sistema...</div>
+  if(loading&&user&&user.role==="admin")return(
+    <div style={{display:"flex",background:C.bg,minHeight:"100vh"}}>
+      <div style={{width:248,background:C.primary,minHeight:"100vh",position:"fixed",left:0,top:0}}>
+        <div style={{padding:"22px 18px 18px"}}>
+          <img src={LOGO} alt="Norma Kuján" style={{width:"100%",maxWidth:200,height:"auto",display:"block"}}/>
+        </div>
+      </div>
+      <div style={{marginLeft:248,flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{textAlign:"center"}}>
+          <Spinner size={36}/>
+          <div style={{fontSize:14,color:C.muted,marginTop:16}}>Cargando datos...</div>
+        </div>
       </div>
     </div>
   );
