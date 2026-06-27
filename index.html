@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RecrutaPlus – Sistema de Reclutamiento</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F0F6FF}
+    .rp-btn:hover:not(:disabled){filter:brightness(0.9)}
+    .rp-row:hover{background:#F8FAFF!important}
+    .rp-nav:hover{background:rgba(255,255,255,0.07)!important}
+    input:focus,textarea:focus,select:focus{outline:2px solid #0D9488!important;outline-offset:1px}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:99px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .fade-in{animation:fadeIn 0.25s ease}
+    textarea{resize:vertical;font-family:inherit}
+    input,select{font-family:inherit}
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div style="min-height:100vh;background:#1E3A5F;display:flex;align-items:center;justify-content:center">
+      <div style="text-align:center;color:#fff">
+        <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#14B8A6;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px"></div>
+        <div style="font-size:18px;font-weight:700">RecrutaPlus</div>
+        <div style="font-size:13px;opacity:0.5;margin-top:6px">Iniciando sistema...</div>
+      </div>
+    </div>
+  </div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+/* ═══ SUPABASE CONFIG ═══ */
+const SB_URL = "https://zmdtrimicrbttuuwbxds.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptZHRyaW1pY3JidHR1dXdieGRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NTQxODMsImV4cCI6MjA5ODEzMDE4M30.oy4QZZn-27BmAWnIWCqwLodVflf0FFWlO62U3LTo6a0";
+const H = { "apikey":SB_KEY, "Authorization":`Bearer ${SB_KEY}`, "Content-Type":"application/json", "Prefer":"return=representation" };
+
+const db = {
+  async get(table, filter="") {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}?select=*${filter?"&"+filter:""}`, {headers:H});
+      if(!r.ok){console.error(await r.text());return [];}
+      return await r.json();
+    } catch(e){console.error(e);return [];}
+  },
+  async insert(table, data) {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}`,{method:"POST",headers:H,body:JSON.stringify(data)});
+      if(!r.ok){console.error(await r.text());return null;}
+      const res=await r.json(); return Array.isArray(res)?res[0]:res;
+    } catch(e){console.error(e);return null;}
+  },
+  async update(table, id, data) {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:"PATCH",headers:H,body:JSON.stringify(data)});
+      return r.ok;
+    } catch(e){console.error(e);return false;}
+  },
+  async del(table, id) {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:"DELETE",headers:{"apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`}});
+      return r.ok;
+    } catch(e){console.error(e);return false;}
+  },
+  async uploadCV(file, candidateId) {
+    try {
+      const ext=file.name.split(".").pop();
+      const fileName=`${candidateId}_${Date.now()}.${ext}`;
+      const r = await fetch(`${SB_URL}/storage/v1/object/cvs/${fileName}`,{
+        method:"POST",
+        headers:{"apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`,"Content-Type":file.type||"application/octet-stream","x-upsert":"true"},
+        body:file,
+      });
+      if(!r.ok){console.error(await r.text());return null;}
+      return `${SB_URL}/storage/v1/object/public/cvs/${fileName}`;
+    } catch(e){console.error(e);return null;}
+  },
+  async deleteCV(cvUrl) {
+    try {
+      const fileName=cvUrl.split("/cvs/").pop();
+      await fetch(`${SB_URL}/storage/v1/object/cvs/${fileName}`,{method:"DELETE",headers:{"apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`}});
+    } catch(e){console.error(e);}
+  },
+};
+
+/* ═══ MAPPERS ═══ */
+const mapUser = r => ({id:r.id,username:r.username,password:r.password,role:r.role,name:r.name,companyName:r.company_name,email:r.email,active:r.active,createdAt:r.created_at});
+const mapCandidate = r => ({id:r.id,name:r.name,email:r.email,phone:r.phone,position:r.position,status:r.status,skills:r.skills,notes:r.notes,cvFileName:r.cv_file_name,cvUrl:r.cv_url,cvText:r.cv_text,createdAt:r.created_at});
+const mapForm = r => ({id:r.id,companyId:r.company_id,companyName:r.company_name,formData:r.form_data,downloaded:r.downloaded,submittedAt:r.submitted_at});
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2);
+const fmtDate = d => d?new Date(d).toLocaleDateString("es-EC"):"-";
+
+/* ═══ DESIGN TOKENS ═══ */
+const C = {
+  primary:"#1E3A5F",primaryL:"#2A4E7F",accent:"#0D9488",accentL:"#14B8A6",
+  bg:"#F0F6FF",card:"#FFFFFF",text:"#0F172A",muted:"#64748B",border:"#E2E8F0",
+  danger:"#DC2626",dangerL:"#FEE2E2",success:"#059669",successL:"#DCFCE7",
+  warning:"#D97706",warningL:"#FEF3C7",info:"#2563EB",infoL:"#DBEAFE",sideText:"#94A3B8",
+};
+
+/* ═══ SVG ICONS ═══ */
+const I = (paths, size=16, extra={}) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...extra} dangerouslySetInnerHTML={{__html:paths}}/>
+);
+const IconDash     = ({size=16,style:s})=>I('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',size,{style:s});
+const IconUsers    = ({size=16,style:s})=>I('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',size,{style:s});
+const IconBrain    = ({size=16,style:s})=>I('<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.44-4.66A2.5 2.5 0 0 1 9.5 2"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.44-4.66A2.5 2.5 0 0 0 14.5 2"/>',size,{style:s});
+const IconFile     = ({size=16,style:s})=>I('<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>',size,{style:s});
+const IconBuilding = ({size=16,style:s})=>I('<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',size,{style:s});
+const IconSettings = ({size=16,style:s})=>I('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',size,{style:s});
+const IconLogout   = ({size=16,style:s})=>I('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',size,{style:s});
+const IconPlus     = ({size=16,style:s})=>I('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',size,{style:s});
+const IconX        = ({size=16,style:s})=>I('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',size,{style:s});
+const IconDownload = ({size=16,style:s})=>I('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',size,{style:s});
+const IconUpload   = ({size=16,style:s})=>I('<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',size,{style:s});
+const IconSearch   = ({size=16,style:s})=>I('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',size,{style:s});
+const IconTrash    = ({size=16,style:s})=>I('<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',size,{style:s});
+const IconEdit     = ({size=16,style:s})=>I('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',size,{style:s});
+const IconCheck    = ({size=16,style:s,color})=>I('<polyline points="20 6 9 16 4 11"/>',size,{style:s,stroke:color||"currentColor"});
+const IconAlert    = ({size=16,style:s})=>I('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',size,{style:s});
+const IconEye      = ({size=16,style:s,color})=>I('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',size,{style:s,stroke:color||"currentColor"});
+const IconRefresh  = ({size=16,style:s})=>I('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',size,{style:s});
+const IconUser     = ({size=16,style:s})=>I('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',size,{style:s});
+const IconLock     = ({size=16,style:s})=>I('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',size,{style:s});
+const IconChevR    = ({size=16,style:s})=>I('<polyline points="9 18 15 12 9 6"/>',size,{style:s});
+const IconUserPlus = ({size=16,style:s,color})=>I('<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>',size,{style:s,stroke:color||"currentColor"});
+const IconZap      = ({size=16,style:s})=>I('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',size,{style:s});
+const IconShield   = ({size=16,style:s})=>I('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',size,{style:s});
+const IconBriefcase= ({size=16,style:s})=>I('<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',size,{style:s});
+const IconExtLink  = ({size=16,style:s})=>I('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',size,{style:s});
+
+/* ═══ UI COMPONENTS ═══ */
+const inputSt = {border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 12px",fontSize:14,color:C.text,outline:"none",background:"#fff",width:"100%",fontFamily:"inherit"};
+
+const Btn = ({children,onClick,variant="primary",size="md",disabled,fullWidth,type="button"}) => {
+  const v={primary:{bg:C.accent,color:"#fff",border:C.accent},navy:{bg:C.primary,color:"#fff",border:C.primary},secondary:{bg:"#fff",color:C.text,border:C.border},danger:{bg:C.danger,color:"#fff",border:C.danger},ghost:{bg:"transparent",color:C.muted,border:"transparent"}}[variant]||{};
+  return <button type={type} onClick={onClick} disabled={disabled} className="rp-btn" style={{display:"inline-flex",alignItems:"center",gap:6,borderRadius:8,padding:size==="sm"?"6px 14px":"9px 18px",fontSize:size==="sm"?13:14,fontWeight:500,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,border:`1.5px solid ${v.border}`,background:v.bg,color:v.color,width:fullWidth?"100%":undefined,justifyContent:fullWidth?"center":undefined,fontFamily:"inherit",transition:"filter 0.15s"}}>{children}</button>;
+};
+
+const Inp = ({label,value,onChange,type="text",placeholder="",required,disabled,rows}) => (
+  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+    {label&&<label style={{fontSize:12,fontWeight:600,color:C.text,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}{required&&<span style={{color:C.danger}}> *</span>}</label>}
+    {rows?<textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows} disabled={disabled} style={{...inputSt,resize:"vertical"}}/>
+         :<input type={type} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} style={{...inputSt,background:disabled?C.bg:"#fff"}}/>}
+  </div>
+);
+
+const Card = ({children,style:s={}}) => <div style={{background:C.card,borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 1px 8px rgba(0,0,0,0.04)",padding:24,...s}}>{children}</div>;
+
+const Badge = ({children,color="info"}) => {
+  const colors={info:{bg:C.infoL,text:"#1E40AF"},success:{bg:C.successL,text:"#065F46"},warning:{bg:C.warningL,text:"#92400E"},danger:{bg:C.dangerL,text:"#991B1B"},neutral:{bg:"#F1F5F9",text:C.muted},teal:{bg:"#CCFBF1",text:"#0F766E"}};
+  const c=colors[color]||colors.info;
+  return <span style={{background:c.bg,color:c.text,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:600,display:"inline-block"}}>{children}</span>;
+};
+
+const Modal = ({open,onClose,title,children,width=520}) => {
+  if(!open)return null;
+  return <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+    <div className="fade-in" style={{background:C.card,borderRadius:16,width:"100%",maxWidth:width,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 24px",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,background:C.card,zIndex:1}}>
+        <h2 style={{margin:0,fontSize:17,fontWeight:600,color:C.text}}>{title}</h2>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:C.muted,display:"flex",padding:4}}><IconX size={20}/></button>
+      </div>
+      <div style={{padding:24}}>{children}</div>
+    </div>
+  </div>;
+};
+
+const StatCard = ({label,value,Icon,color,sub,onClick}) => (
+  <div onClick={onClick} style={{background:C.card,borderRadius:12,padding:20,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:16,borderLeft:`4px solid ${color}`,cursor:onClick?"pointer":"default"}}
+    onMouseEnter={e=>onClick&&(e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.1)")}
+    onMouseLeave={e=>onClick&&(e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)")}>
+    <div style={{width:48,height:48,borderRadius:12,background:`${color}18`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      <Icon size={22} style={{color}}/>
+    </div>
+    <div>
+      <div style={{fontSize:28,fontWeight:700,color:C.text,lineHeight:1}}>{value}</div>
+      <div style={{fontSize:13,color:C.muted,marginTop:3}}>{label}</div>
+      {sub&&<div style={{fontSize:12,color:C.accent,marginTop:2}}>{sub}</div>}
+    </div>
+  </div>
+);
+
+const Spinner = ({size=24}) => <div style={{width:size,height:size,border:"3px solid #E2E8F0",borderTopColor:C.accent,borderRadius:"50%",animation:"spin 0.7s linear infinite",display:"inline-block"}}/>;
+
+const AlertBox = ({type="error",children}) => {
+  const t={error:{bg:C.dangerL,color:C.danger},success:{bg:C.successL,color:C.success},info:{bg:C.infoL,color:C.info}}[type];
+  return <div style={{background:t.bg,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,color:t.color,fontSize:13}}><IconAlert size={15} style={{flexShrink:0}}/>{children}</div>;
+};
+
+/* ═══ LOGIN PAGE ═══ */
+function LoginPage({onLogin}) {
+  const [username,setUsername]=useState("");
+  const [password,setPassword]=useState("");
+  const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const handleSubmit = async () => {
+    if(!username||!password){setError("Completa todos los campos");return;}
+    setLoading(true);setError("");
+    const ok=await onLogin(username,password);
+    if(!ok){setError("Usuario o contraseña incorrectos");setLoading(false);}
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:`linear-gradient(135deg,${C.primary} 0%,${C.primaryL} 50%,#1a4a6e 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div className="fade-in" style={{background:"rgba(255,255,255,0.08)",backdropFilter:"blur(8px)",borderRadius:20,padding:40,width:"100%",maxWidth:420,border:"1px solid rgba(255,255,255,0.15)"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{width:72,height:72,background:"rgba(13,148,136,0.25)",borderRadius:20,margin:"0 auto 16px",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid rgba(13,148,136,0.5)"}}>
+            <IconUserPlus size={34} color="#14B8A6"/>
+          </div>
+          <h1 style={{color:"#fff",fontSize:28,fontWeight:700,letterSpacing:"-0.5px"}}>RecrutaPlus</h1>
+          <p style={{color:"rgba(255,255,255,0.55)",marginTop:8,fontSize:14}}>Sistema de Gestión de Reclutamiento</p>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {[["Usuario",username,setUsername,"text"],["Contraseña",password,setPassword,"password"]].map(([lbl,val,setter,typ])=>(
+            <div key={lbl}>
+              <div style={{color:"rgba(255,255,255,0.75)",fontSize:13,fontWeight:500,marginBottom:6}}>{lbl}</div>
+              <div style={{position:"relative"}}>
+                {typ==="text"?<IconUser size={15} style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,0.4)"}}/>
+                             :<IconLock size={15} style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,0.4)"}}/>}
+                <input type={typ} value={val} onChange={e=>setter(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+                  placeholder={typ==="password"?"••••••••":"Ingresa tu usuario"}
+                  style={{width:"100%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:10,padding:"11px 12px 11px 40px",fontSize:14,color:"#fff",outline:"none",fontFamily:"inherit"}}/>
+              </div>
+            </div>
+          ))}
+          {error&&<AlertBox type="error">{error}</AlertBox>}
+          <button onClick={handleSubmit} disabled={loading} style={{background:C.accent,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:600,cursor:loading?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:6,fontFamily:"inherit",opacity:loading?0.7:1}}>
+            {loading?<><Spinner size={18}/> Ingresando...</>:"Ingresar al sistema"}
+          </button>
+        </div>
+        <p style={{textAlign:"center",color:"rgba(255,255,255,0.25)",fontSize:11,marginTop:24}}>© 2025 RecrutaPlus · Consultoría de Talento Humano</p>
+      </div>
+      <style>{`input::placeholder{color:rgba(255,255,255,0.3)!important}`}</style>
+    </div>
+  );
+}
+
+/* ═══ SIDEBAR ═══ */
+const NAV = [
+  {id:"dashboard",Icon:IconDash,label:"Panel general"},
+  {id:"candidates",Icon:IconUsers,label:"Candidatos"},
+  {id:"analysis",Icon:IconBrain,label:"Análisis IA"},
+  {id:"forms",Icon:IconFile,label:"Formularios de cargo"},
+  {id:"companies",Icon:IconBuilding,label:"Empresas"},
+  {id:"settings",Icon:IconSettings,label:"Configuración"},
+];
+
+function Sidebar({view,setView,user,onLogout}) {
+  return (
+    <div style={{width:248,background:C.primary,display:"flex",flexDirection:"column",height:"100vh",position:"fixed",left:0,top:0,zIndex:100,boxShadow:"4px 0 16px rgba(0,0,0,0.15)"}}>
+      <div style={{padding:"22px 18px 18px",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:11}}>
+          <div style={{width:38,height:38,background:C.accent,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><IconUserPlus size={19} color="#fff"/></div>
+          <div><div style={{color:"#fff",fontWeight:700,fontSize:17}}>RecrutaPlus</div><div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>Gestión de talento</div></div>
+        </div>
+      </div>
+      <nav style={{padding:"10px",flex:1,overflowY:"auto"}}>
+        <div style={{color:"rgba(255,255,255,0.3)",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",padding:"10px 10px 6px"}}>Principal</div>
+        {NAV.map(({id,Icon,label})=>{
+          const active=view===id;
+          return <button key={id} onClick={()=>setView(id)} className={active?"":"rp-nav"}
+            style={{display:"flex",alignItems:"center",gap:11,width:"100%",padding:"10px 12px",borderRadius:9,marginBottom:2,background:active?"rgba(13,148,136,0.2)":"transparent",border:`1px solid ${active?"rgba(13,148,136,0.35)":"transparent"}`,borderLeft:`3px solid ${active?C.accent:"transparent"}`,color:active?"#fff":C.sideText,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+            <Icon size={17} style={{flexShrink:0}}/>
+            <span style={{fontSize:13.5,fontWeight:active?600:400}}>{label}</span>
+          </button>;
+        })}
+      </nav>
+      <div style={{padding:"14px 10px",borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+        <div style={{padding:"0 10px 12px"}}>
+          <div style={{color:"#fff",fontSize:13,fontWeight:500}}>{user?.name||user?.username}</div>
+          <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>Administradora · ☁️ Supabase</div>
+        </div>
+        <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"9px 12px",borderRadius:9,background:"rgba(220,38,38,0.12)",border:"1px solid rgba(220,38,38,0.2)",color:"#FCA5A5",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
+          <IconLogout size={15}/> Cerrar sesión
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ DASHBOARD ═══ */
+function DashboardView({candidates,companies,formSubmissions,setView}) {
+  const pending=formSubmissions.filter(f=>!f.downloaded);
+  const positions=[...new Set(candidates.map(c=>c.position).filter(Boolean))];
+  const recent=[...candidates].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
+  const recentForms=[...formSubmissions].sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt)).slice(0,5);
+  const statColor={Activo:"success","En proceso":"info",Seleccionado:"teal",Descartado:"danger"};
+  return (
+    <div className="fade-in">
+      <div style={{marginBottom:28}}>
+        <h1 style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>Panel general</h1>
+        <p style={{color:C.muted,fontSize:14}}>{new Date().toLocaleDateString("es-EC",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:24}}>
+        <StatCard label="Candidatos" value={candidates.length} Icon={IconUsers} color={C.accent} sub={`${candidates.filter(c=>c.status==="Activo").length} activos`} onClick={()=>setView("candidates")}/>
+        <StatCard label="Formularios recibidos" value={formSubmissions.length} Icon={IconFile} color={C.info} sub={pending.length>0?`${pending.length} sin revisar`:"Al día"} onClick={()=>setView("forms")}/>
+        <StatCard label="Empresas" value={companies.length} Icon={IconBuilding} color={C.warning} onClick={()=>setView("companies")}/>
+        <StatCard label="Cargos distintos" value={positions.length} Icon={IconBriefcase} color={C.success}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <h3 style={{fontSize:15,fontWeight:600,color:C.text}}>Candidatos recientes</h3>
+            <Btn variant="ghost" size="sm" onClick={()=>setView("candidates")}>Ver todos <IconChevR size={13}/></Btn>
+          </div>
+          {recent.length===0?<p style={{color:C.muted,textAlign:"center",padding:"20px 0"}}>Sin candidatos aún</p>
+            :recent.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:`${C.accent}20`,color:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,flexShrink:0}}>{(c.name||"?")[0].toUpperCase()}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:500,color:C.text,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
+                <div style={{color:C.muted,fontSize:12}}>{c.position||"Sin cargo"}</div>
+              </div>
+              <Badge color={statColor[c.status]||"neutral"}>{c.status||"Sin estado"}</Badge>
+            </div>)}
+        </Card>
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <h3 style={{fontSize:15,fontWeight:600,color:C.text}}>Formularios recientes</h3>
+            <Btn variant="ghost" size="sm" onClick={()=>setView("forms")}>Ver todos <IconChevR size={13}/></Btn>
+          </div>
+          {recentForms.length===0?<p style={{color:C.muted,textAlign:"center",padding:"20px 0"}}>Sin formularios aún</p>
+            :recentForms.map(f=><div key={f.id} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{width:34,height:34,borderRadius:8,background:`${C.info}18`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><IconBuilding size={16} style={{color:C.info}}/></div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:500,color:C.text,fontSize:14}}>{f.companyName}</div>
+                <div style={{color:C.muted,fontSize:12}}>{f.formData?.tituloPuesto||"Sin título"}</div>
+              </div>
+              <Badge color={f.downloaded?"neutral":"info"}>{f.downloaded?"Revisado":"Nuevo"}</Badge>
+            </div>)}
+        </Card>
+      </div>
+      {positions.length>0&&<Card style={{marginTop:16,padding:18}}>
+        <h3 style={{fontSize:15,fontWeight:600,color:C.text,marginBottom:12}}>Distribución por cargos</h3>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          {positions.map(p=>{const cnt=candidates.filter(c=>c.position===p).length;return <div key={p} style={{background:C.bg,borderRadius:8,padding:"8px 14px",border:`1px solid ${C.border}`,fontSize:13}}>
+            <span style={{fontWeight:500,color:C.text}}>{p}</span>
+            <span style={{marginLeft:8,background:`${C.accent}20`,color:C.accent,borderRadius:99,padding:"1px 8px",fontSize:12,fontWeight:600}}>{cnt}</span>
+          </div>;})}
+        </div>
+      </Card>}
+    </div>
+  );
+}
+
+/* ═══ CANDIDATES VIEW ═══ */
+const STATUS_OPTS=["Activo","En proceso","Seleccionado","Descartado"];
+const STATUS_COLOR={Activo:"success","En proceso":"info",Seleccionado:"teal",Descartado:"danger"};
+
+function CandidatesView({candidates,refreshCandidates}) {
+  const [search,setSearch]=useState("");
+  const [posFilter,setPosFilter]=useState("");
+  const [statusFilter,setStatusFilter]=useState("");
+  const [showModal,setShowModal]=useState(false);
+  const [editing,setEditing]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const positions=[...new Set(candidates.map(c=>c.position).filter(Boolean))];
+  const filtered=candidates.filter(c=>{
+    const q=search.toLowerCase();
+    return(!q||[c.name,c.email,c.position,c.skills].some(f=>f?.toLowerCase().includes(q)))&&(!posFilter||c.position===posFilter)&&(!statusFilter||c.status===statusFilter);
+  });
+  const handleDelete=async id=>{
+    if(!confirm("¿Eliminar este candidato?"))return;
+    const cand=candidates.find(c=>c.id===id);
+    if(cand?.cvUrl)await db.deleteCV(cand.cvUrl);
+    await db.del("candidates",id);
+    await refreshCandidates();
+  };
+  const handleSave=async(data,cvFile)=>{
+    setSaving(true);
+    try{
+      const isNew=!editing;const id=editing?.id||uid();
+      let cvUrl=data.cvUrl||null;let cvFileName=data.cvFileName||null;
+      if(cvFile){
+        if(editing?.cvUrl)await db.deleteCV(editing.cvUrl);
+        const url=await db.uploadCV(cvFile,id);
+        if(url){cvUrl=url;cvFileName=cvFile.name;}
+      }
+      const dbData={id,name:data.name,email:data.email||null,phone:data.phone||null,position:data.position||null,status:data.status||"Activo",skills:data.skills||null,notes:data.notes||null,cv_file_name:cvFileName,cv_url:cvUrl,cv_text:data.cvText||null};
+      if(isNew)await db.insert("candidates",dbData);
+      else await db.update("candidates",id,dbData);
+      await refreshCandidates();
+    }catch(e){console.error(e);alert("Error al guardar.");}
+    setSaving(false);setShowModal(false);
+  };
+  return(
+    <div className="fade-in">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <div><h1 style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>Candidatos</h1>
+        <p style={{color:C.muted,fontSize:14}}>Banco de hojas de vida ☁️ · {candidates.length} registrados</p></div>
+        <Btn onClick={()=>{setEditing(null);setShowModal(true);}}><IconPlus size={16}/> Agregar candidato</Btn>
+      </div>
+      <Card style={{padding:14,marginBottom:16}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <div style={{position:"relative",flex:2,minWidth:200}}>
+            <IconSearch size={15} style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:C.muted}}/>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nombre, email, cargo o habilidades..." style={{...inputSt,paddingLeft:36}}/>
+          </div>
+          <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={{...inputSt,width:"auto",minWidth:160,color:posFilter?C.text:C.muted}}>
+            <option value="">Todos los cargos</option>
+            {positions.map(p=><option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputSt,width:"auto",minWidth:140,color:statusFilter?C.text:C.muted}}>
+            <option value="">Todos los estados</option>
+            {STATUS_OPTS.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          {(search||posFilter||statusFilter)&&<Btn variant="ghost" size="sm" onClick={()=>{setSearch("");setPosFilter("");setStatusFilter("");}}><IconX size={14}/> Limpiar</Btn>}
+        </div>
+      </Card>
+      <Card style={{padding:0,overflow:"hidden"}}>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr style={{background:C.bg,borderBottom:`1px solid ${C.border}`}}>
+              {["Candidato","Cargo","Contacto","Habilidades","Estado","Registrado","Acciones"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {filtered.length===0?<tr><td colSpan={7} style={{textAlign:"center",padding:48,color:C.muted}}>{candidates.length===0?"Agrega tu primer candidato":"Sin resultados"}</td></tr>
+              :filtered.map(c=><tr key={c.id} className="rp-row" style={{borderBottom:`1px solid ${C.border}`}}>
+                <td style={{padding:"12px 16px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:34,height:34,borderRadius:"50%",background:`${C.accent}20`,color:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,flexShrink:0}}>{(c.name||"?")[0].toUpperCase()}</div>
+                    <div><div style={{fontWeight:500,color:C.text,fontSize:14}}>{c.name}</div>{c.cvFileName&&<div style={{fontSize:11,color:C.accent}}>☁️ {c.cvFileName}</div>}</div>
+                  </div>
+                </td>
+                <td style={{padding:"12px 16px",fontSize:13,color:C.text}}>{c.position||"—"}</td>
+                <td style={{padding:"12px 16px"}}><div style={{fontSize:12,color:C.muted}}>{c.email||"—"}</div><div style={{fontSize:12,color:C.muted}}>{c.phone||""}</div></td>
+                <td style={{padding:"12px 16px",maxWidth:150}}><div style={{fontSize:12,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.skills||"—"}</div></td>
+                <td style={{padding:"12px 16px"}}><Badge color={STATUS_COLOR[c.status]||"neutral"}>{c.status||"Sin estado"}</Badge></td>
+                <td style={{padding:"12px 16px",fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>{fmtDate(c.createdAt)}</td>
+                <td style={{padding:"12px 16px"}}>
+                  <div style={{display:"flex",gap:5}}>
+                    {c.cvUrl&&<a href={c.cvUrl} target="_blank" rel="noopener noreferrer" title="Ver CV" style={{background:`${C.accent}15`,border:"none",borderRadius:6,padding:"5px 8px",cursor:"pointer",color:C.accent,display:"inline-flex",alignItems:"center",textDecoration:"none"}}><IconExtLink size={14}/></a>}
+                    <button onClick={()=>{setEditing(c);setShowModal(true);}} style={{background:`${C.info}15`,border:"none",borderRadius:6,padding:"5px 8px",cursor:"pointer",color:C.info}}><IconEdit size={14}/></button>
+                    <button onClick={()=>handleDelete(c.id)} style={{background:`${C.danger}15`,border:"none",borderRadius:6,padding:"5px 8px",cursor:"pointer",color:C.danger}}><IconTrash size={14}/></button>
+                  </div>
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <CandidateModal open={showModal} onClose={()=>setShowModal(false)} editing={editing} onSave={handleSave} saving={saving}/>
+    </div>
+  );
+}
+
+function CandidateModal({open,onClose,editing,onSave,saving}) {
+  const blank={name:"",email:"",phone:"",position:"",status:"Activo",skills:"",notes:"",cvFileName:"",cvUrl:"",cvText:""};
+  const [form,setForm]=useState(blank);
+  const [cvFile,setCvFile]=useState(null);
+  const fileRef=useRef();
+  useEffect(()=>{setForm(editing?{...blank,...editing}:blank);setCvFile(null);},[editing,open]);
+  const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const handleCV=e=>{
+    const file=e.target.files[0];if(!file)return;
+    if(file.size>10*1024*1024){alert("Máximo 10 MB");return;}
+    setCvFile(file);setForm(f=>({...f,cvFileName:file.name}));
+  };
+  return(
+    <Modal open={open} onClose={onClose} title={editing?"Editar candidato":"Nuevo candidato"} width={580}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Inp label="Nombre completo" required value={form.name} onChange={set("name")}/>
+          <Inp label="Correo electrónico" type="email" value={form.email} onChange={set("email")}/>
+          <Inp label="Teléfono" value={form.phone} onChange={set("phone")}/>
+          <Inp label="Cargo al que aplica" value={form.position} onChange={set("position")}/>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          <label style={{fontSize:12,fontWeight:600,color:C.text,textTransform:"uppercase",letterSpacing:"0.04em"}}>Estado del proceso</label>
+          <select value={form.status} onChange={set("status")} style={{...inputSt}}>
+            {STATUS_OPTS.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <Inp label="Habilidades / Skills" value={form.skills} onChange={set("skills")} placeholder="ej: Excel avanzado, Liderazgo, Python..."/>
+        <Inp label="Notas internas" value={form.notes} onChange={set("notes")} rows={2}/>
+        <div>
+          <label style={{fontSize:12,fontWeight:600,color:C.text,textTransform:"uppercase",letterSpacing:"0.04em",display:"block",marginBottom:6}}>Hoja de vida (CV)</label>
+          <div style={{border:`2px dashed ${C.border}`,borderRadius:10,padding:16,textAlign:"center",background:C.bg}}>
+            {form.cvFileName?(
+              <div>
+                <div style={{color:C.accent,fontWeight:500,fontSize:14,marginBottom:8}}>☁️ {form.cvFileName}</div>
+                <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+                  {form.cvUrl&&<a href={form.cvUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:13,color:C.info,textDecoration:"none"}}><IconExtLink size={13}/> Ver CV actual</a>}
+                  <Btn variant="ghost" size="sm" onClick={()=>{setCvFile(null);setForm(f=>({...f,cvFileName:"",cvUrl:""}));}}><IconX size={14}/> Cambiar</Btn>
+                </div>
+              </div>
+            ):(
+              <div>
+                <IconUpload size={22} style={{display:"block",margin:"0 auto 8px",color:C.muted}}/>
+                <p style={{color:C.muted,fontSize:13,margin:"0 0 10px"}}>PDF, DOC, DOCX — hasta 10 MB · Se sube a la nube ☁️</p>
+                <Btn variant="secondary" size="sm" onClick={()=>fileRef.current.click()}>Seleccionar archivo</Btn>
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept=".pdf,.doc,.docx" style={{display:"none"}} onChange={handleCV}/>
+          </div>
+        </div>
+        <Inp label="Resumen del CV (texto para análisis IA)" value={form.cvText} onChange={set("cvText")} rows={3} placeholder="Pega aquí el texto del CV o un resumen de experiencia y formación..."/>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:6,borderTop:`1px solid ${C.border}`}}>
+          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={()=>{if(!form.name.trim()){alert("El nombre es requerido");return;}onSave(form,cvFile);}} disabled={saving}>
+            {saving?<><Spinner size={14}/> {cvFile?"Subiendo CV...":"Guardando..."}</>:<><IconCheck size={15}/> {editing?"Guardar cambios":"Agregar candidato"}</>}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ═══ AI ANALYSIS VIEW ═══ */
+function AIAnalysisView({candidates}) {
+  const [selected,setSelected]=useState([]);
+  const [position,setPosition]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null);
+  const [error,setError]=useState("");
+  const toggle=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const allSelected=candidates.length>0&&selected.length===candidates.length;
+  const analyze=async()=>{
+    if(selected.length===0){setError("Selecciona al menos un candidato");return;}
+    setLoading(true);setResult(null);setError("");
+    const sel=candidates.filter(c=>selected.includes(c.id));
+    const cvBlock=sel.map((c,i)=>`--- CANDIDATO ${i+1}: ${c.name.toUpperCase()} ---\nCargo: ${c.position||"N/A"} | Estado: ${c.status||"N/A"}\nHabilidades: ${c.skills||"N/A"}\nCV: ${c.cvText||"(Sin texto)"}\nNotas: ${c.notes||"Ninguna"}`).join("\n\n");
+    try{
+      const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:`Eres consultora senior de RRHH. Analiza estos candidatos${position?` para el cargo de "${position}"`:""}:\n\n${cvBlock}\n\nGenera un informe con:\n1. RESUMEN EJECUTIVO del pool\n2. ANÁLISIS INDIVIDUAL: fortalezas, áreas de mejora, idoneidad (Alta/Media/Baja) y calificación ★★★★★\n3. COMPARATIVA entre candidatos\n4. RECOMENDACIÓN FINAL justificada`}]})});
+      const data=await resp.json();
+      if(data.content?.[0]?.text)setResult(data.content[0].text);
+      else setError("No se pudo obtener el análisis.");
+    }catch{setError("Error de conexión.");}
+    setLoading(false);
+  };
+  const download=()=>{
+    const blob=new Blob([`ANÁLISIS IA DE CANDIDATOS\nRecrutaPlus · ${new Date().toLocaleDateString("es-EC")}\n${"=".repeat(60)}\n\n${result}`],{type:"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`Analisis_${Date.now()}.txt`;a.click();URL.revokeObjectURL(url);
+  };
+  return(
+    <div className="fade-in">
+      <div style={{marginBottom:24}}><h1 style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>Análisis IA de candidatos</h1><p style={{color:C.muted,fontSize:14}}>Selecciona CVs y obtén un informe profesional con inteligencia artificial</p></div>
+      <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:20,alignItems:"start"}}>
+        <div>
+          <Card style={{marginBottom:14}}>
+            <h3 style={{fontSize:14,fontWeight:600,color:C.text,marginBottom:12}}>Contexto del análisis</h3>
+            <Inp label="Cargo a evaluar (opcional)" value={position} onChange={e=>setPosition(e.target.value)} placeholder="ej: Gerente comercial..."/>
+          </Card>
+          <Card style={{padding:0,overflow:"hidden"}}>
+            <div style={{padding:"13px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:14,fontWeight:600,color:C.text}}>Seleccionar CVs ({selected.length})</span>
+              {candidates.length>0&&<button onClick={()=>setSelected(allSelected?[]:candidates.map(c=>c.id))} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:12,fontWeight:500,fontFamily:"inherit"}}>{allSelected?"Desmarcar todos":"Seleccionar todos"}</button>}
+            </div>
+            {candidates.length===0?<p style={{textAlign:"center",color:C.muted,padding:"24px 16px",fontSize:13}}>Primero agrega candidatos</p>
+            :<div style={{maxHeight:360,overflowY:"auto"}}>
+              {candidates.map(c=><label key={c.id} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,cursor:"pointer",background:selected.includes(c.id)?`${C.accent}08`:""}}>
+                <input type="checkbox" checked={selected.includes(c.id)} onChange={()=>toggle(c.id)} style={{accentColor:C.accent,width:15,height:15}}/>
+                <div style={{width:28,height:28,borderRadius:"50%",background:`${C.accent}20`,color:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,flexShrink:0}}>{(c.name||"?")[0].toUpperCase()}</div>
+                <div><div style={{fontSize:13,fontWeight:500,color:C.text}}>{c.name}</div><div style={{fontSize:11,color:C.muted}}>{c.position||"Sin cargo"}{c.cvText?" · texto disponible":""}</div></div>
+              </label>)}
+            </div>}
+            <div style={{padding:12,borderTop:`1px solid ${C.border}`}}>
+              <Btn fullWidth onClick={analyze} disabled={loading||selected.length===0}>
+                {loading?<><Spinner size={15}/> Analizando...</>:<><IconZap size={15}/> Analizar {selected.length>0?`${selected.length} CV${selected.length!==1?"s":""}`:""}</>}
+              </Btn>
+            </div>
+          </Card>
+        </div>
+        <div>
+          {error&&<div style={{marginBottom:16}}><AlertBox type="error">{error}</AlertBox></div>}
+          {loading&&<Card style={{textAlign:"center",padding:48}}><Spinner size={36}/><p style={{color:C.muted,fontSize:14,marginTop:16}}>Generando informe profesional...</p></Card>}
+          {result&&!loading&&<Card className="fade-in">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{fontSize:16,fontWeight:600,color:C.text}}>Resultado del análisis IA</h3>
+              <Btn variant="secondary" size="sm" onClick={download}><IconDownload size={14}/> Descargar</Btn>
+            </div>
+            <div style={{background:C.bg,borderRadius:10,padding:20,fontSize:13.5,lineHeight:1.85,color:C.text,whiteSpace:"pre-wrap",maxHeight:560,overflowY:"auto",fontFamily:"inherit"}}>{result}</div>
+          </Card>}
+          {!result&&!loading&&<Card style={{textAlign:"center",padding:56}}>
+            <IconBrain size={52} style={{display:"block",margin:"0 auto 16px",color:C.border}}/>
+            <h3 style={{color:C.text,marginBottom:8,fontSize:17}}>Listo para analizar candidatos</h3>
+            <p style={{color:C.muted,fontSize:14,maxWidth:380,margin:"0 auto"}}>Selecciona candidatos y presiona "Analizar CVs" para obtener un informe profesional con IA.</p>
+          </Card>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ FORMS VIEW ═══ */
+function FormsView({formSubmissions,refreshForms}) {
+  const [selected,setSelected]=useState(null);
+  const handleDownload=async form=>{
+    const html=generateFormHTML(form.formData,{companyName:form.companyName,date:form.submittedAt});
+    const blob=new Blob([html],{type:"application/msword;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download=`MAN-GTH-001_${(form.formData?.tituloPuesto||"Cargo").replace(/\s/g,"_")}_${form.companyName.replace(/\s/g,"_")}.doc`;
+    a.click();URL.revokeObjectURL(url);
+    await db.update("form_submissions",form.id,{downloaded:true});
+    await refreshForms();
+    setSelected(prev=>prev?.id===form.id?{...prev,downloaded:true}:prev);
+  };
+  const handleDelete=async id=>{
+    if(!confirm("¿Eliminar este formulario?"))return;
+    await db.del("form_submissions",id);await refreshForms();
+    if(selected?.id===id)setSelected(null);
+  };
+  return(
+    <div className="fade-in">
+      <div style={{marginBottom:24}}><h1 style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>Formularios de cargo</h1><p style={{color:C.muted,fontSize:14}}>Solicitudes enviadas por tus empresas · {formSubmissions.length} recibidos</p></div>
+      {formSubmissions.length===0?<Card style={{textAlign:"center",padding:56}}>
+        <IconFile size={52} style={{display:"block",margin:"0 auto 16px",color:C.border}}/>
+        <h3 style={{color:C.text,marginBottom:8}}>Sin formularios recibidos aún</h3>
+        <p style={{color:C.muted,fontSize:14}}>Cuando una empresa envíe su solicitud, aparecerá aquí para revisarla y descargarla.</p>
+      </Card>
+      :<div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start"}}>
+        <Card style={{padding:0,overflow:"hidden"}}>
+          {[...formSubmissions].sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt)).map(f=><div key={f.id} onClick={()=>setSelected(f)}
+            style={{padding:"12px 14px",borderBottom:`1px solid ${C.border}`,cursor:"pointer",background:selected?.id===f.id?`${C.accent}08`:"",borderLeft:`3px solid ${selected?.id===f.id?C.accent:"transparent"}`}}
+            onMouseEnter={e=>{if(selected?.id!==f.id)e.currentTarget.style.background=C.bg;}}
+            onMouseLeave={e=>{if(selected?.id!==f.id)e.currentTarget.style.background="";}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontWeight:500,color:C.text,fontSize:14}}>{f.companyName}</div>
+                <div style={{color:C.muted,fontSize:12}}>{f.formData?.tituloPuesto||"Sin título"}</div>
+                <div style={{color:C.muted,fontSize:11,marginTop:2}}>{fmtDate(f.submittedAt)}</div>
+              </div>
+              <Badge color={f.downloaded?"neutral":"info"}>{f.downloaded?"Revisado":"Nuevo"}</Badge>
+            </div>
+          </div>)}
+        </Card>
+        {selected?<Card className="fade-in">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+            <div><h2 style={{fontSize:18,fontWeight:600,color:C.text,marginBottom:3}}>{selected.companyName}</h2><div style={{color:C.muted,fontSize:13}}>Recibido: {fmtDate(selected.submittedAt)}</div></div>
+            <div style={{display:"flex",gap:10}}>
+              <Btn variant="danger" size="sm" onClick={()=>handleDelete(selected.id)}><IconTrash size={14}/> Eliminar</Btn>
+              <Btn size="sm" onClick={()=>handleDownload(selected)}><IconDownload size={14}/> Descargar .doc</Btn>
+            </div>
+          </div>
+          <FormPreview data={selected.formData}/>
+        </Card>:<Card style={{textAlign:"center",padding:48}}>
+          <IconEye size={40} color={C.border} style={{display:"block",margin:"0 auto 16px"}}/>
+          <p style={{color:C.muted}}>Selecciona un formulario para ver su contenido</p>
+        </Card>}
+      </div>}
+    </div>
+  );
+}
+
+function FormPreview({data={}}) {
+  const Sec=({title,children})=><div style={{marginBottom:14}}><div style={{background:C.primary,color:"#fff",padding:"6px 12px",borderRadius:"6px 6px 0 0",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{title}</div><div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",padding:14}}>{children}</div></div>;
+  const Row=({label,value})=><div style={{display:"flex",gap:8,marginBottom:5}}><span style={{fontWeight:600,fontSize:12,color:C.text,minWidth:170,flexShrink:0}}>{label}:</span><span style={{fontSize:13,color:C.muted}}>{value||"—"}</span></div>;
+  const cb=v=>v?"✅":"⬜";
+  return(<div style={{fontSize:13}}>
+    <Sec title="I. Identificación del cargo"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 20px"}}>
+      <Row label="Título del puesto" value={data.tituloPuesto}/><Row label="Área" value={data.area}/>
+      <Row label="Nivel jerárquico" value={data.nivelJerarquico}/><Row label="Departamento" value={data.departamento}/>
+      <Row label="Informa a (jerárquico)" value={data.informaJerarquico}/><Row label="Informa a (funcional)" value={data.informaFuncional}/>
+      <Row label="Relaciones externas" value={data.relacionesExternas}/><Row label="Relaciones internas" value={data.relacionesInternas}/>
+    </div></Sec>
+    <Sec title="II. Posición estructural"><p style={{margin:0,color:C.muted,lineHeight:1.6}}>{data.posicionEstructural||"—"}</p></Sec>
+    <Sec title="III. Misión del cargo"><p style={{margin:0,color:C.muted,lineHeight:1.6}}>{data.misionCargo||"—"}</p></Sec>
+    <Sec title="IV. Responsabilidades & autoridades"><Row label="Responsabilidades" value={data.responsabilidades}/><Row label="Autoridades" value={data.autoridades}/></Sec>
+    <Sec title="V. Competencias">
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 20px",marginBottom:10}}>
+        {[["maestria","Maestría"],["titulo3","Título universitario (3er nivel)"],["estudiante","Estudiante/egresado"],["tecnologo","Tecnólogo"],["bachiller","Bachiller"],["primaria","Educación primaria"]].map(([k,l])=><div key={k} style={{display:"flex",gap:6,color:C.text}}><span>{cb(data.educacion?.[k])}</span><span>{l}</span></div>)}
+      </div>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",margin:"8px 0"}}>
+        {[["sinExp","Sin experiencia"],["exp12","1-2 años"],["exp35","3-5 años"],["exp5",">5 años"]].map(([k,l])=><span key={k} style={{color:C.text}}>{cb(data.experiencia?.[k])} {l}</span>)}
+      </div>
+      {data.formacion?.cert1&&<Row label="Formación 1" value={data.formacion.cert1}/>}
+      {data.formacion?.cert2&&<Row label="Formación 2" value={data.formacion.cert2}/>}
+    </Sec>
+    <Sec title="VII. Lugar de trabajo"><div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+      {[["teletrabajo","Teletrabajo"],["oficina","Oficina"],["obras","Obras"],["bodegas","Bodegas"]].map(([k,l])=><span key={k} style={{color:C.text}}>{l}: <strong>{data.lugarTrabajo?.[k]||0}%</strong></span>)}
+    </div></Sec>
+    <Sec title="VIII. Herramientas de trabajo"><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 20px"}}>
+      {[["extTelefonica","Extensión telefónica"],["correoInterno","Correo electrónico interno"],["llamadasExt","Llamadas al exterior"],["compEscritorio","Computador de escritorio"],["uniforme","Uniforme"],["compPortatil","Computador portátil"],["credencial","Credencial"],["celular","Celular asignado"],["epp","EPP"],["radio","Radio asignado"],["vehiculo","Vehículo asignado"]].map(([k,l])=><div key={k} style={{display:"flex",gap:6,color:C.text}}><span>{cb(data.herramientas?.[k])}</span><span>{l}</span></div>)}
+    </div></Sec>
+  </div>);
+}
+
+/* ═══ COMPANIES VIEW ═══ */
+function CompaniesView({companies,refreshCompanies}) {
+  const [showModal,setShowModal]=useState(false);
+  const [editing,setEditing]=useState(null);
+  const [form,setForm]=useState({companyName:"",username:"",password:"",email:""});
+  const [saving,setSaving]=useState(false);
+  const openAdd=()=>{setEditing(null);setForm({companyName:"",username:"",password:"",email:""});setShowModal(true);};
+  const openEdit=co=>{setEditing(co);setForm({companyName:co.companyName||"",username:co.username||"",password:co.password||"",email:co.email||""});setShowModal(true);};
+  const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const handleSave=async()=>{
+    if(!form.companyName||!form.username||!form.password){alert("Completa nombre, usuario y contraseña");return;}
+    if(companies.some(c=>c.username===form.username&&(!editing||c.id!==editing.id))){alert("Ese usuario ya existe");return;}
+    setSaving(true);
+    const data={username:form.username,password:form.password,role:"company",name:form.companyName,company_name:form.companyName,email:form.email||null,active:true};
+    if(editing)await db.update("users",editing.id,data);
+    else await db.insert("users",{...data,id:uid()});
+    await refreshCompanies();setSaving(false);setShowModal(false);
+  };
+  const handleDelete=async id=>{if(!confirm("¿Eliminar esta empresa?"))return;await db.del("users",id);await refreshCompanies();};
+  const toggleActive=async co=>{await db.update("users",co.id,{active:!co.active});await refreshCompanies();};
+  return(
+    <div className="fade-in">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <div><h1 style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>Empresas clientes</h1><p style={{color:C.muted,fontSize:14}}>Gestiona los accesos al portal de formularios</p></div>
+        <Btn onClick={openAdd}><IconPlus size={16}/> Agregar empresa</Btn>
+      </div>
+      {companies.length===0?<Card style={{textAlign:"center",padding:56}}>
+        <IconBuilding size={52} style={{display:"block",margin:"0 auto 16px",color:C.border}}/>
+        <h3 style={{color:C.text,marginBottom:8}}>Sin empresas registradas</h3>
+        <p style={{color:C.muted,fontSize:14,marginBottom:20}}>Crea cuentas para que tus clientes accedan al formulario.</p>
+        <Btn onClick={openAdd}><IconPlus size={16}/> Agregar primera empresa</Btn>
+      </Card>
+      :<Card style={{padding:0,overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr style={{background:C.bg,borderBottom:`1px solid ${C.border}`}}>
+            {["Empresa","Usuario","Email","Estado","Creado","Acciones"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.04em"}}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {companies.map(co=><tr key={co.id} className="rp-row" style={{borderBottom:`1px solid ${C.border}`}}>
+              <td style={{padding:"12px 16px"}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:34,height:34,borderRadius:8,background:`${C.info}18`,display:"flex",alignItems:"center",justifyContent:"center"}}><IconBuilding size={16} style={{color:C.info}}/></div><span style={{fontWeight:500,color:C.text}}>{co.companyName}</span></div></td>
+              <td style={{padding:"12px 16px",fontSize:13,color:C.muted,fontFamily:"monospace"}}>{co.username}</td>
+              <td style={{padding:"12px 16px",fontSize:13,color:C.muted}}>{co.email||"—"}</td>
+              <td style={{padding:"12px 16px"}}><Badge color={co.active!==false?"success":"danger"}>{co.active!==false?"Activa":"Inactiva"}</Badge></td>
+              <td style={{padding:"12px 16px",fontSize:12,color:C.muted}}>{fmtDate(co.createdAt)}</td>
+              <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:5}}>
+                <button onClick={()=>toggleActive(co)} style={{background:`${co.active!==false?C.warning:C.success}15`,border:"none",borderRadius:6,padding:"5px 8px",cursor:"pointer",color:co.active!==false?C.warning:C.success}}>{co.active!==false?<IconX size={14}/>:<IconCheck size={14}/>}</button>
+                <button onClick={()=>openEdit(co)} style={{background:`${C.info}15`,border:"none",borderRadius:6,padding:"5px 8px",cursor:"pointer",color:C.info}}><IconEdit size={14}/></button>
+                <button onClick={()=>handleDelete(co.id)} style={{background:`${C.danger}15`,border:"none",borderRadius:6,padding:"5px 8px",cursor:"pointer",color:C.danger}}><IconTrash size={14}/></button>
+              </div></td>
+            </tr>)}
+          </tbody>
+        </table>
+      </Card>}
+      <Modal open={showModal} onClose={()=>setShowModal(false)} title={editing?"Editar empresa":"Nueva empresa"}>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <Inp label="Nombre de la empresa" required value={form.companyName} onChange={set("companyName")}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <Inp label="Usuario de acceso" required value={form.username} onChange={set("username")}/>
+            <Inp label="Contraseña" type="password" required value={form.password} onChange={set("password")}/>
+          </div>
+          <Inp label="Email de contacto" type="email" value={form.email} onChange={set("email")}/>
+          <div style={{background:C.infoL,borderRadius:8,padding:"10px 14px",fontSize:13,color:C.info,display:"flex",gap:8,alignItems:"flex-start"}}>
+            <IconShield size={15} style={{flexShrink:0,marginTop:1}}/> La empresa usará estas credenciales para acceder al formulario de cargo.
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:6}}>
+            <Btn variant="secondary" onClick={()=>setShowModal(false)}>Cancelar</Btn>
+            <Btn onClick={handleSave} disabled={saving}>{saving?<><Spinner size={14}/> Guardando...</>:<><IconCheck size={15}/> {editing?"Guardar cambios":"Crear empresa"}</>}</Btn>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ═══ SETTINGS VIEW ═══ */
+function SettingsView({user,candidates,companies,formSubmissions}) {
+  const [old,setOld]=useState("");const [neo,setNeo]=useState("");const [conf,setConf]=useState("");
+  const [msg,setMsg]=useState(null);
+  const handleChange=async()=>{
+    if(!old||!neo||!conf){setMsg({t:"error",v:"Completa todos los campos"});return;}
+    if(neo!==conf){setMsg({t:"error",v:"Las contraseñas no coinciden"});return;}
+    if(neo.length<6){setMsg({t:"error",v:"Mínimo 6 caracteres"});return;}
+    const users=await db.get("users",`id=eq.${user.id}`);
+    if(!users?.length||users[0].password!==old){setMsg({t:"error",v:"La contraseña actual es incorrecta"});return;}
+    const ok=await db.update("users",user.id,{password:neo});
+    if(ok){setMsg({t:"success",v:"Contraseña actualizada correctamente"});setOld("");setNeo("");setConf("");}
+    else setMsg({t:"error",v:"Error al actualizar."});
+  };
+  return(
+    <div className="fade-in">
+      <div style={{marginBottom:24}}><h1 style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>Configuración</h1><p style={{color:C.muted,fontSize:14}}>Gestiona tu perfil y preferencias</p></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:820}}>
+        <Card>
+          <h3 style={{fontSize:15,fontWeight:600,color:C.text,marginBottom:16}}>Cambiar contraseña</h3>
+          {msg&&<div style={{marginBottom:14}}><AlertBox type={msg.t}>{msg.v}</AlertBox></div>}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <Inp label="Contraseña actual" type="password" value={old} onChange={e=>setOld(e.target.value)}/>
+            <Inp label="Nueva contraseña" type="password" value={neo} onChange={e=>setNeo(e.target.value)}/>
+            <Inp label="Confirmar nueva contraseña" type="password" value={conf} onChange={e=>setConf(e.target.value)}/>
+            <Btn onClick={handleChange} style={{marginTop:4}}><IconLock size={15}/> Actualizar contraseña</Btn>
+          </div>
+        </Card>
+        <Card>
+          <h3 style={{fontSize:15,fontWeight:600,color:C.text,marginBottom:16}}>Estado del sistema</h3>
+          {[["Versión","RecrutaPlus v2.0 ☁️"],["Base de datos","Supabase (PostgreSQL)"],["Almacenamiento CVs","Supabase Storage"],["Usuario",user?.username||"admin"],["Candidatos",candidates.length],["Empresas",companies.length],["Formularios",formSubmissions.length]].map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><span style={{fontSize:13,color:C.muted}}>{k}</span><span style={{fontSize:13,fontWeight:500,color:C.text}}>{v}</span></div>)}
+          <div style={{marginTop:14,padding:"10px 14px",background:C.successL,borderRadius:8,display:"flex",gap:8,alignItems:"center",fontSize:13,color:"#065F46"}}><IconCheck size={15} color={C.success}/> Conectado a Supabase correctamente</div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ ADMIN APP ═══ */
+function AdminApp({user,view,setView,onLogout,candidates,companies,formSubmissions,refreshCandidates,refreshCompanies,refreshForms}) {
+  const views={
+    dashboard:<DashboardView candidates={candidates} companies={companies} formSubmissions={formSubmissions} setView={setView}/>,
+    candidates:<CandidatesView candidates={candidates} refreshCandidates={refreshCandidates}/>,
+    analysis:<AIAnalysisView candidates={candidates}/>,
+    forms:<FormsView formSubmissions={formSubmissions} refreshForms={refreshForms}/>,
+    companies:<CompaniesView companies={companies} refreshCompanies={refreshCompanies}/>,
+    settings:<SettingsView user={user} candidates={candidates} companies={companies} formSubmissions={formSubmissions}/>,
+  };
+  return(
+    <div style={{display:"flex",background:C.bg,minHeight:"100vh"}}>
+      <Sidebar view={view} setView={setView} user={user} onLogout={onLogout}/>
+      <main style={{marginLeft:248,flex:1,padding:"28px 28px 48px",minHeight:"100vh"}}>{views[view]||views.dashboard}</main>
+    </div>
+  );
+}
+
+/* ═══ COMPANY FORM APP ═══ */
+function CompanyApp({user,onLogout,onSubmit}) {
+  const EMPTY={tituloPuesto:"",area:"",nivelJerarquico:"",departamento:"",informaJerarquico:"",informaFuncional:"",relacionesExternas:"",relacionesInternas:"",posicionEstructural:"",misionCargo:"",responsabilidades:"",autoridades:"",educacion:{maestria:false,titulo3:false,estudiante:false,tecnologo:false,bachiller:false,primaria:false,educacionEn:""},experiencia:{sinExp:false,exp12:false,exp35:false,exp5:false,expEn:""},formacion:{cert1:"",cert2:""},requerimientos:{req1:"",req2:"",req3:""},lugarTrabajo:{teletrabajo:"",oficina:"",obras:"",bodegas:""},herramientas:{extTelefonica:false,correoInterno:false,llamadasExt:false,compEscritorio:false,uniforme:false,compPortatil:false,credencial:false,celular:false,epp:false,radio:false,vehiculo:false}};
+  const [form,setForm]=useState(EMPTY);
+  const [submitted,setSubmitted]=useState(false);
+  const [sending,setSending]=useState(false);
+  const setF=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const setNested=(parent,k)=>e=>{const v=e.target.type==="checkbox"?e.target.checked:e.target.value;setForm(f=>({...f,[parent]:{...f[parent],[k]:v};}));};
+  const handleSubmit=async()=>{
+    if(!form.tituloPuesto.trim()){alert('El campo "Título del Puesto" es requerido');return;}
+    setSending(true);await onSubmit(form);setSending(false);setSubmitted(true);
+  };
+  const fi={...inputSt};
+  const SH=({n,title})=><div style={{background:C.primary,color:"#fff",padding:"10px 16px",borderRadius:"10px 10px 0 0",fontWeight:700,fontSize:13,letterSpacing:"0.03em"}}>{n}. {title}</div>;
+  const SB=({children})=><div style={{border:`1.5px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 10px 10px",padding:20,marginBottom:20}}>{children}</div>;
+  const Cb=({label,checked,onChange})=><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:C.text,padding:"3px 0"}}><input type="checkbox" checked={checked} onChange={onChange} style={{accentColor:C.accent,width:15,height:15}}/>{label}</label>;
+  const lugarTotal=Object.values(form.lugarTrabajo).reduce((a,v)=>a+(parseInt(v)||0),0);
+  if(submitted)return(
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <Card className="fade-in" style={{maxWidth:480,textAlign:"center",padding:52}}>
+        <div style={{width:72,height:72,background:C.successL,borderRadius:"50%",margin:"0 auto 20px",display:"flex",alignItems:"center",justifyContent:"center"}}><IconCheck size={36} color={C.success}/></div>
+        <h2 style={{color:C.text,marginBottom:10}}>¡Formulario enviado!</h2>
+        <p style={{color:C.muted,marginBottom:24,lineHeight:1.6}}>Tu solicitud fue recibida exitosamente. La consultora se comunicará contigo a la brevedad.</p>
+        <Btn variant="secondary" onClick={()=>{setSubmitted(false);setForm(EMPTY);}}>Enviar otro formulario</Btn>
+      </Card>
+    </div>
+  );
+  return(
+    <div style={{minHeight:"100vh",background:C.bg}}>
+      <div style={{background:C.primary,padding:"14px 32px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10,boxShadow:"0 2px 10px rgba(0,0,0,0.2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:36,height:36,background:C.accent,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center"}}><IconFile size={18} style={{color:"#fff"}}/></div>
+          <div><div style={{color:"#fff",fontWeight:700,fontSize:16}}>RecrutaPlus</div><div style={{color:"rgba(255,255,255,0.55)",fontSize:11}}>{user.companyName||user.name}</div></div>
+        </div>
+        <button onClick={onLogout} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.8)",borderRadius:8,padding:"7px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:13,fontFamily:"inherit"}}>
+          <IconLogout size={14}/> Cerrar sesión
+        </button>
+      </div>
+      <div style={{maxWidth:860,margin:"0 auto",padding:"32px 20px 60px"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{display:"inline-block",background:"#fff",border:`1.5px solid ${C.border}`,borderRadius:8,padding:"4px 16px",fontSize:12,color:C.muted,marginBottom:14}}>Código: MAN-GTH-001 · Versión 01 · Fecha: {new Date().toLocaleDateString("es-EC")}</div>
+          <h1 style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:8}}>Manual de Funciones del Cargo</h1>
+          <p style={{color:C.muted,fontSize:14}}>Complete el formulario con la información del cargo requerido</p>
+        </div>
+        <SH n="I" title="IDENTIFICACIÓN DEL CARGO"/>
+        <SB>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+            <div><label style={{fontSize:12,fontWeight:600,color:C.text,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.04em"}}>Título del puesto <span style={{color:C.danger}}>*</span></label><input value={form.tituloPuesto} onChange={setF("tituloPuesto")} style={fi}/></div>
+            <div><label style={{fontSize:12,fontWeight:600,color:C.text,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.04em"}}>Área</label><input value={form.area} onChange={setF("area")} style={fi}/></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+            <div><label style={{fontSize:12,fontWeight:600,color:C.text,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.04em"}}>Nivel jerárquico</label><input value={form.nivelJerarquico} onChange={setF("nivelJerarquico")} style={fi}/></div>
+            <div><label style={{fontSize:12,fontWeight:600,color:C.text,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.04em"}}>Departamento</label><input value={form.departamento} onChange={setF("departamento")} style={fi}/></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+            <div><div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.04em"}}>Informa a:</div>
+              {[["Jerárquico","informaJerarquico"],["Funcional","informaFuncional"]].map(([l,k])=><div key={k} style={{marginBottom:10}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>{l}:</label><input value={form[k]} onChange={setF(k)} style={fi}/></div>)}
+            </div>
+            <div><div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.04em"}}>Relaciones:</div>
+              {[["Externas","relacionesExternas"],["Internas","relacionesInternas"]].map(([l,k])=><div key={k} style={{marginBottom:10}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>{l}:</label><input value={form[k]} onChange={setF(k)} style={fi}/></div>)}
+            </div>
+          </div>
+        </SB>
+        <SH n="II" title="POSICIÓN ESTRUCTURAL"/>
+        <SB><textarea value={form.posicionEstructural} onChange={setF("posicionEstructural")} rows={4} placeholder="Describe la posición dentro de la estructura organizacional..." style={{...fi,resize:"vertical"}}/></SB>
+        <SH n="III" title="MISIÓN DEL CARGO"/>
+        <SB><textarea value={form.misionCargo} onChange={setF("misionCargo")} rows={4} placeholder="Describe la misión principal del cargo..." style={{...fi,resize:"vertical"}}/></SB>
+        <SH n="IV" title="RESPONSABILIDADES & AUTORIDADES DEL CARGO"/>
+        <SB>
+          <div style={{marginBottom:14}}><label style={{fontSize:12,fontWeight:700,color:C.text,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.04em"}}>Responsabilidades:</label><textarea value={form.responsabilidades} onChange={setF("responsabilidades")} rows={4} placeholder="Lista las principales responsabilidades..." style={{...fi,resize:"vertical"}}/></div>
+          <div><label style={{fontSize:12,fontWeight:700,color:C.text,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.04em"}}>Autoridades:</label><textarea value={form.autoridades} onChange={setF("autoridades")} rows={3} placeholder="Describe las autoridades y niveles de decisión..." style={{...fi,resize:"vertical"}}/></div>
+        </SB>
+        <SH n="V" title="COMPETENCIAS"/>
+        <SB>
+          <div style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.04em"}}>Educación formal</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {[["maestria","Maestría"],["titulo3","Título universitario (3er nivel)"],["estudiante","Estudiante o egresado de carreras universitarias"],["tecnologo","Tecnólogo"],["bachiller","Educación Secundaria Completa (Bachiller)"],["primaria","Educación Primaria Completa"]].map(([k,l])=><Cb key={k} label={l} checked={form.educacion[k]} onChange={setNested("educacion",k)}/>)}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10}}><span style={{fontSize:13,color:C.text,fontWeight:500,whiteSpace:"nowrap"}}>Educación en:</span><input value={form.educacion.educacionEn} onChange={setNested("educacion","educacionEn")} style={fi}/></div>
+          </div>
+          <div style={{marginBottom:16,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.04em"}}>Experiencia:</div>
+            <div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:10}}>
+              {[["sinExp","Sin experiencia"],["exp12","1-2 años"],["exp35","3-5 años"],["exp5",">5 años"]].map(([k,l])=><Cb key={k} label={l} checked={form.experiencia[k]} onChange={setNested("experiencia",k)}/>)}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:13,color:C.text,fontWeight:500,whiteSpace:"nowrap"}}>Experiencia en:</span><input value={form.experiencia.expEn} onChange={setNested("experiencia","expEn")} style={fi}/></div>
+          </div>
+          <div style={{paddingTop:14,borderTop:`1px solid ${C.border}`}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.04em"}}>Formación: Licencias, Certificaciones o Cursos en temas asociados a:</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <input value={form.formacion.cert1} onChange={setNested("formacion","cert1")} placeholder="Certificación / Licencia 1..." style={fi}/>
+              <input value={form.formacion.cert2} onChange={setNested("formacion","cert2")} placeholder="Certificación / Licencia 2..." style={fi}/>
+            </div>
+          </div>
+        </SB>
+        <SH n="VI" title="REQUERIMIENTOS ESPECIALES"/>
+        <SB>
+          {[["req1","1"],["req2","2"],["req3","3"]].map(([k,n])=><div key={k} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+            <div style={{width:26,height:26,background:C.primary,color:"#fff",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,flexShrink:0}}>{n}</div>
+            <input value={form.requerimientos[k]} onChange={setNested("requerimientos",k)} placeholder={`Requerimiento ${n}...`} style={fi}/>
+          </div>)}
+        </SB>
+        <SH n="VII" title="LUGAR DE TRABAJO"/>
+        <SB>
+          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Los porcentajes deben sumar 100%</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:10}}>
+            {[["teletrabajo","Teletrabajo"],["oficina","Oficina"],["obras","Obras"],["bodegas","Bodegas"]].map(([k,l])=><div key={k}>
+              <label style={{fontSize:12,fontWeight:600,color:C.text,display:"block",marginBottom:5}}>{l}</label>
+              <div style={{position:"relative"}}><input type="number" min="0" max="100" value={form.lugarTrabajo[k]} onChange={setNested("lugarTrabajo",k)} style={{...fi,paddingRight:28}}/><span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:C.muted}}>%</span></div>
+            </div>)}
+          </div>
+          <div style={{padding:"9px 14px",background:lugarTotal===100?C.successL:C.warningL,borderRadius:8,fontSize:13,color:lugarTotal===100?"#065F46":"#92400E",display:"flex",alignItems:"center",gap:8}}>
+            {lugarTotal===100?<IconCheck size={15} color={C.success}/>:<IconAlert size={15}/>} Total: <strong>{lugarTotal}%</strong>{lugarTotal!==100&&" — debe sumar 100%"}
+          </div>
+        </SB>
+        <SH n="VIII" title="HERRAMIENTAS DE TRABAJO"/>
+        <SB>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            {[["extTelefonica","Extensión telefónica"],["correoInterno","Correo electrónico interno"],["llamadasExt","Llamadas al exterior"],["compEscritorio","Computador de escritorio"],["uniforme","Uniforme"],["compPortatil","Computador portátil"],["credencial","Credencial"],["celular","Celular asignado"],["epp","Equipo de protección personal EPP"],["radio","Radio asignado"],["vehiculo","Vehículo asignado"]].map(([k,l])=><Cb key={k} label={l} checked={form.herramientas[k]} onChange={setNested("herramientas",k)}/>)}
+          </div>
+        </SB>
+        <div style={{textAlign:"center",marginTop:12}}>
+          <button onClick={handleSubmit} disabled={sending} style={{background:sending?"#94A3B8":C.accent,color:"#fff",border:"none",borderRadius:12,padding:"14px 44px",fontSize:16,fontWeight:600,cursor:sending?"not-allowed":"pointer",display:"inline-flex",alignItems:"center",gap:10,fontFamily:"inherit"}}>
+            {sending?<><Spinner size={18}/> Enviando...</>:<><IconCheck size={18}/> Enviar formulario</>}
+          </button>
+          <p style={{color:C.muted,fontSize:12,marginTop:12}}>Al enviar, la consultora recibirá tu solicitud de inmediato</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ FORM HTML GENERATOR ═══ */
+function generateFormHTML(data={},meta={}) {
+  const cb=v=>v?"&#9745;":"&#9744;";
+  const date=meta.date?new Date(meta.date).toLocaleDateString("es-EC"):new Date().toLocaleDateString("es-EC");
+  const esc=t=>(t||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+  return`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="ProgId" content="Word.Document"><style>body{font-family:Arial,sans-serif;font-size:10.5pt;margin:2cm;color:#000}table{width:100%;border-collapse:collapse;margin-bottom:10px;page-break-inside:avoid}td,th{border:1px solid #1E3A5F;padding:5px 8px;vertical-align:top;font-size:10.5pt}.sh{background:#1E3A5F;color:#fff;font-weight:bold;font-size:11pt;padding:7px 10px}.lb{font-weight:bold;background:#EEF2FF}.cb{font-size:13pt;line-height:1.2}.c{text-align:center}@page{margin:2cm}</style></head><body>
+<table><tr><td style="width:16%;text-align:center;padding:10px;font-size:9pt;color:#666;vertical-align:middle">[Logo]</td><td style="text-align:center;font-weight:bold;font-size:14pt;vertical-align:middle;padding:10px">MANUAL DE FUNCIONES DEL CARGO</td><td style="width:26%;vertical-align:middle"><b>Código:</b> MAN-GTH-001<br><b>Versión:</b> 01<br><b>Fecha:</b> ${date}</td></tr></table>
+<table><tr><td colspan="4" class="sh">I. IDENTIFICACIÓN DEL CARGO</td></tr><tr><td class="lb" style="width:22%">TITULO DEL PUESTO:</td><td style="width:28%">${esc(data.tituloPuesto)}</td><td class="lb" style="width:15%">AREA:</td><td>${esc(data.area)}</td></tr><tr><td class="lb">NIVEL JERÁRQUICO:</td><td>${esc(data.nivelJerarquico)}</td><td class="lb">DEPARTAMENTO:</td><td>${esc(data.departamento)}</td></tr><tr><td class="lb">INFORMA A:</td><td>Jerárquico: ${esc(data.informaJerarquico)}<br>Funcional: ${esc(data.informaFuncional)}</td><td class="lb">RELACIONES:</td><td>Externas: ${esc(data.relacionesExternas)}<br>Internas: ${esc(data.relacionesInternas)}</td></tr></table>
+<table><tr><td class="sh">II. POSICIÓN ESTRUCTURAL</td></tr><tr><td style="min-height:80px;height:80px">${esc(data.posicionEstructural)}&nbsp;</td></tr></table>
+<table><tr><td class="sh">III. MISIÓN DEL CARGO</td></tr><tr><td style="min-height:80px;height:80px">${esc(data.misionCargo)}&nbsp;</td></tr></table>
+<table><tr><td colspan="2" class="sh">IV. RESPONSABILIDADES &amp; AUTORIDADES DEL CARGO</td></tr><tr><td colspan="2" class="lb">RESPONSABILIDADES:</td></tr><tr><td colspan="2">${esc(data.responsabilidades)}&nbsp;</td></tr><tr><td colspan="2" class="lb">AUTORIDADES:</td></tr><tr><td colspan="2">${esc(data.autoridades)}&nbsp;</td></tr></table>
+<table><tr><td colspan="3" class="sh">V. COMPETENCIAS</td></tr><tr><td class="lb" rowspan="7" style="width:22%;vertical-align:middle">EDUCACIÓN FORMAL</td><td style="width:60%">Maestría</td><td class="cb c" style="width:18%">${cb(data.educacion?.maestria)}</td></tr><tr><td>Título universitario (3er nivel)</td><td class="cb c">${cb(data.educacion?.titulo3)}</td></tr><tr><td>Estudiante o egresado de carreras universitarias</td><td class="cb c">${cb(data.educacion?.estudiante)}</td></tr><tr><td>Tecnólogo</td><td class="cb c">${cb(data.educacion?.tecnologo)}</td></tr><tr><td>Educación Secundaria Completa (Bachiller)</td><td class="cb c">${cb(data.educacion?.bachiller)}</td></tr><tr><td>Educación Primaria Completa</td><td class="cb c">${cb(data.educacion?.primaria)}</td></tr><tr><td colspan="2">Educación en: ${esc(data.educacion?.educacionEn)}</td></tr><tr><td class="lb">EXPERIENCIA:</td><td colspan="2"><b>Sin experiencia:</b> <span class="cb">${cb(data.experiencia?.sinExp)}</span> &nbsp;<b>1-2 años:</b> <span class="cb">${cb(data.experiencia?.exp12)}</span> &nbsp;<b>3-5 años:</b> <span class="cb">${cb(data.experiencia?.exp35)}</span> &nbsp;<b>&gt;5 años:</b> <span class="cb">${cb(data.experiencia?.exp5)}</span><br>Experiencia en: ${esc(data.experiencia?.expEn)}</td></tr><tr><td class="lb">FORMACIÓN:</td><td colspan="2">Licencias, Certificaciones o Cursos:<br>${esc(data.formacion?.cert1)}<br>${esc(data.formacion?.cert2)}</td></tr></table>
+<table><tr><td colspan="2" class="sh">VI. REQUERIMIENTOS ESPECIALES</td></tr><tr><td class="lb c" style="width:8%">N°</td><td class="lb">REQUERIMIENTO</td></tr><tr><td class="c">1</td><td>${esc(data.requerimientos?.req1)}&nbsp;</td></tr><tr><td class="c">2</td><td>${esc(data.requerimientos?.req2)}&nbsp;</td></tr><tr><td class="c">3</td><td>${esc(data.requerimientos?.req3)}&nbsp;</td></tr></table>
+<table><tr><td colspan="2" class="sh">VII. LUGAR DE TRABAJO</td></tr><tr><td class="lb">TIPO</td><td class="lb">PORCENTAJE</td></tr><tr><td>Teletrabajo</td><td>${data.lugarTrabajo?.teletrabajo||0}%</td></tr><tr><td>Oficina</td><td>${data.lugarTrabajo?.oficina||0}%</td></tr><tr><td>Obras</td><td>${data.lugarTrabajo?.obras||0}%</td></tr><tr><td>Bodegas</td><td>${data.lugarTrabajo?.bodegas||0}%</td></tr><tr><td class="lb">TOTAL</td><td class="lb">100%</td></tr></table>
+<table><tr><td colspan="2" class="sh">VIII. HERRAMIENTAS DE TRABAJO</td></tr><tr><td><span class="cb">${cb(data.herramientas?.extTelefonica)}</span> Extensión telefónica</td><td><span class="cb">${cb(data.herramientas?.correoInterno)}</span> Correo electrónico interno</td></tr><tr><td><span class="cb">${cb(data.herramientas?.llamadasExt)}</span> Llamadas al exterior</td><td><span class="cb">${cb(data.herramientas?.compEscritorio)}</span> Computador de escritorio</td></tr><tr><td><span class="cb">${cb(data.herramientas?.uniforme)}</span> Uniforme</td><td><span class="cb">${cb(data.herramientas?.compPortatil)}</span> Computador portátil</td></tr><tr><td><span class="cb">${cb(data.herramientas?.credencial)}</span> Credencial</td><td><span class="cb">${cb(data.herramientas?.celular)}</span> Celular asignado</td></tr><tr><td><span class="cb">${cb(data.herramientas?.epp)}</span> Equipo de protección personal EPP</td><td><span class="cb">${cb(data.herramientas?.radio)}</span> Radio asignado</td></tr><tr><td><span class="cb">${cb(data.herramientas?.vehiculo)}</span> Vehículo asignado</td><td>&nbsp;</td></tr></table>
+<table style="margin-top:20px"><tr><td style="width:50%;font-size:9pt">Página 1 de 2 &nbsp;|&nbsp; Versión 01</td><td style="font-size:9pt;font-style:italic;text-align:right">No se debe divulgar a terceras partes sin previa autorización</td></tr></table>
+</body></html>`;
+}
+
+/* ═══ ROOT APP ═══ */
+function App() {
+  const [user,setUser]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [view,setView]=useState("dashboard");
+  const [candidates,setCandidates]=useState([]);
+  const [companies,setCompanies]=useState([]);
+  const [formSubmissions,setFormSubmissions]=useState([]);
+
+  const refreshCandidates=async()=>{const d=await db.get("candidates","order=created_at.desc");setCandidates(d.map(mapCandidate));};
+  const refreshCompanies=async()=>{const d=await db.get("users","role=eq.company");setCompanies(d.map(mapUser));};
+  const refreshForms=async()=>{const d=await db.get("form_submissions","order=submitted_at.desc");setFormSubmissions(d.map(mapForm));};
+
+  useEffect(()=>{
+    (async()=>{
+      await Promise.all([refreshCandidates(),refreshCompanies(),refreshForms()]);
+      setLoading(false);
+    })();
+  },[]);
+
+  const handleLogin=async(username,password)=>{
+    const users=await db.get("users",`username=eq.${username}&password=eq.${password}`);
+    if(!users?.length)return false;
+    const u=mapUser(users[0]);
+    if(u.active===false){alert("Esta cuenta está desactivada. Contacta a la consultora.");return false;}
+    setUser(u);setView(u.role==="company"?"company-form":"dashboard");return true;
+  };
+
+  const handleLogout=()=>{setUser(null);setView("dashboard");};
+
+  if(loading)return(
+    <div style={{minHeight:"100vh",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center",color:"#fff"}}>
+        <Spinner size={40}/>
+        <div style={{fontSize:17,fontWeight:600,marginTop:16}}>RecrutaPlus</div>
+        <div style={{fontSize:13,opacity:0.5,marginTop:6}}>Conectando a Supabase...</div>
+      </div>
+    </div>
+  );
+
+  if(!user)return <LoginPage onLogin={handleLogin}/>;
+
+  if(user.role==="company")return(
+    <CompanyApp user={user} onLogout={handleLogout} onSubmit={async formData=>{
+      const sub={id:uid(),company_id:user.id,company_name:user.companyName||user.name,form_data:formData,downloaded:false};
+      await db.insert("form_submissions",sub);await refreshForms();
+    }}/>
+  );
+
+  return(
+    <AdminApp
+      user={user} view={view} setView={setView} onLogout={handleLogout}
+      candidates={candidates} companies={companies} formSubmissions={formSubmissions}
+      refreshCandidates={refreshCandidates} refreshCompanies={refreshCompanies} refreshForms={refreshForms}
+    />
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
