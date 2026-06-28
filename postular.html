@@ -118,7 +118,7 @@
     </ol>
     <p>Cuando envíe este formulario, no se recopilará automáticamente información como su nombre o correo electrónico, a menos que usted la proporcione.</p>
     <div class="consent-check" onclick="toggleConsent()">
-      <input type="checkbox" id="consentCheck" onchange="updateProgress()"/>
+      <input type="checkbox" id="consentCheck" onchange="updateProgress()" onclick="event.stopPropagation()"/>
       <label for="consentCheck">He leído y acepto el tratamiento de mis datos personales conforme a la LOPDP Ecuador. <strong>(Requerido)</strong></label>
     </div>
   </div>
