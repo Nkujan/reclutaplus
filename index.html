@@ -660,30 +660,24 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
   const [saving, setSaving] = useState(false);
   const [cvModal, setCvModal] = useState(null); // { url, fileName }
 
-  const viewCV = async (cvUrl, fileName) => {
-    try {
-      const r = await fetch(cvUrl, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-      if (r.ok) {
-        const blob = await r.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        setCvModal({ url: blobUrl, fileName, isBlob: true });
-      } else {
-        // Fallback: open directly
-        window.open(cvUrl, "_blank");
-      }
-    } catch { window.open(cvUrl, "_blank"); }
+  const viewCV = (cvUrl, fileName) => {
+    if (!cvUrl) return;
+    // Data URI (base64) → show directly; legacy Supabase URL → open in new tab
+    if (cvUrl.startsWith("data:")) {
+      setCvModal({ url: cvUrl, fileName, isBlob: false });
+    } else {
+      window.open(cvUrl, "_blank");
+    }
   };
 
-  const downloadCV = async (cvUrl, fileName) => {
-    try {
-      const r = await fetch(cvUrl, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-      if (r.ok) {
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = fileName || "CV.pdf"; a.click();
-        URL.revokeObjectURL(url);
-      } else { window.open(cvUrl, "_blank"); }
-    } catch { window.open(cvUrl, "_blank"); }
+  const downloadCV = (cvUrl, fileName) => {
+    if (!cvUrl) return;
+    const a = document.createElement("a");
+    a.href = cvUrl;
+    a.download = fileName || "CV.pdf";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
   const positions = [...new Set(candidates.map(c => c.position).filter(Boolean))];
 
@@ -702,23 +696,18 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
     await refreshCandidates();
   };
 
-  const handleSave = async (data, cvFile) => {
+  const handleSave = async (data) => {
     setSaving(true);
     try {
       const isNew = !editing;
       const id = editing?.id || uid();
-      let cvUrl = data.cvUrl || null;
-      let cvFileName = data.cvFileName || null;
-
-      if (cvFile) {
-        if (editing?.cvUrl) await db.deleteCV(editing.cvUrl);
-        const url = await db.uploadCV(cvFile, id);
-        if (url) { cvUrl = url; cvFileName = cvFile.name; }
-      }
+      // Use new data URI if available, otherwise keep existing cvUrl
+      const cvUrl   = data.cvDataUri || data.cvUrl || null;
+      const cvFileName = data.cvFileName || null;
 
       const dbData = {
         id, name: data.name, email: data.email || null, phone: data.phone || null,
-        position: data.position || null, status: data.status || "Activo",
+        position: data.position || null, status: data.status || "Nuevo",
         skills: data.skills || null, notes: data.notes || null,
         cv_file_name: cvFileName, cv_url: cvUrl, cv_text: data.cvText || null,
       };
@@ -841,13 +830,13 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
 }
 
 function CandidateModal({ open, onClose, editing, onSave, saving }) {
-  const blank = { name: "", email: "", phone: "", position: "", status: "Activo", skills: "", notes: "", cvFileName: "", cvUrl: "", cvText: "" };
+  const blank = { name: "", email: "", phone: "", position: "", status: "Nuevo", skills: "", notes: "", cvFileName: "", cvUrl: "", cvDataUri: "", cvText: "" };
   const [form, setForm] = useState(blank);
   const [cvFile, setCvFile] = useState(null);
   const fileRef = useRef();
 
   useEffect(() => {
-    setForm(editing ? { ...blank, ...editing } : blank);
+    setForm(editing ? { ...blank, ...editing, cvDataUri: "" } : blank);
     setCvFile(null);
   }, [editing, open]);
 
@@ -856,9 +845,16 @@ function CandidateModal({ open, onClose, editing, onSave, saving }) {
   const handleCV = e => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { alert("El archivo debe ser menor a 10 MB"); return; }
-    setCvFile(file);
-    setForm(f => ({ ...f, cvFileName: file.name }));
+    if (file.size > 3 * 1024 * 1024) {
+      alert("El CV debe ser menor a 3 MB para guardarse correctamente.\nSi el archivo es más grande, por favor comprímelo primero.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      setForm(f => ({ ...f, cvFileName: file.name, cvDataUri: ev.target.result }));
+      setCvFile(null); // no longer needed, data is in form
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -879,21 +875,19 @@ function CandidateModal({ open, onClose, editing, onSave, saving }) {
           <div style={{ border: `2px dashed ${C.border}`, borderRadius: 10, padding: 16, textAlign: "center", background: C.bg }}>
             {form.cvFileName ? (
               <div>
-                <div style={{ color: C.accent, fontWeight: 500, fontSize: 14, marginBottom: 8 }}>☁️ {form.cvFileName}</div>
-                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                  {form.cvUrl && (
-                    <a href={form.cvUrl} target="_blank" rel="noopener noreferrer"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, color: C.info, textDecoration: "none" }}>
-                      <ExternalLink size={13} /> Ver CV actual
-                    </a>
-                  )}
-                  <Btn variant="ghost" size="sm" onClick={() => { setCvFile(null); setForm(f => ({ ...f, cvFileName: "", cvUrl: "" })); }}><X size={14} /> Cambiar</Btn>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>📎</div>
+                <div style={{ color: C.accent, fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{form.cvFileName}</div>
+                <div style={{ fontSize: 12, color: form.cvDataUri ? C.success : C.muted, marginBottom: 10 }}>
+                  {form.cvDataUri ? "✅ CV listo para guardar" : (form.cvUrl ? "✅ CV guardado previamente" : "")}
                 </div>
+                <Btn variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, cvFileName: "", cvUrl: "", cvDataUri: "" }))}>
+                  <X size={14} /> Cambiar archivo
+                </Btn>
               </div>
             ) : (
               <div>
                 <Upload size={22} color={C.muted} style={{ margin: "0 auto 8px" }} />
-                <p style={{ color: C.muted, fontSize: 13, margin: "0 0 10px" }}>PDF, DOC, DOCX — hasta 10 MB · Se sube a la nube</p>
+                <p style={{ color: C.muted, fontSize: 13, margin: "0 0 10px" }}>PDF o Word — máximo 3 MB</p>
                 <Btn variant="secondary" size="sm" onClick={() => fileRef.current.click()}>Seleccionar archivo</Btn>
               </div>
             )}
@@ -906,7 +900,7 @@ function CandidateModal({ open, onClose, editing, onSave, saving }) {
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
           <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-          <Btn onClick={() => { if (!form.name.trim()) { alert("El nombre es requerido"); return; } onSave(form, cvFile); }} disabled={saving}>
+          <Btn onClick={() => { if (!form.name.trim()) { alert("El nombre es requerido"); return; } onSave(form); }} disabled={saving}>
             {saving ? <><Spinner size={14} /> {cvFile ? "Subiendo CV..." : "Guardando..."}</> : <><Check size={15} /> {editing ? "Guardar cambios" : "Agregar candidato"}</>}
           </Btn>
         </div>
