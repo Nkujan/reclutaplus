@@ -276,6 +276,25 @@ const TrendingUp = _Icon([
   ["polyline", { points: "22 7 13.5 15.5 8.5 10.5 2 17" }],
   ["polyline", { points: "16 7 22 7 22 13" }],
 ]);
+const Layers = _Icon([
+  ["polygon", { points: "12 2 2 7 12 12 22 7 12 2" }],
+  ["polyline", { points: "2 17 12 22 22 17" }],
+  ["polyline", { points: "2 12 12 17 22 12" }],
+]);
+const ArrowRight = _Icon([
+  ["line", { x1: "5", y1: "12", x2: "19", y2: "12" }],
+  ["polyline", { points: "12 5 19 12 12 19" }],
+]);
+const Clock = _Icon([
+  ["circle", { cx: "12", cy: "12", r: "10" }],
+  ["polyline", { points: "12 6 12 12 16 14" }],
+]);
+const Star = _Icon([
+  ["polygon", { points: "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" }],
+]);
+const ChevronDown = _Icon([
+  ["polyline", { points: "6 9 12 15 18 9" }],
+]);
 /* ═══════════════════════════════════════════════════════════
    SUPABASE CONFIG
 ═══════════════════════════════════════════════════════════ */
@@ -511,7 +530,7 @@ function LoginPage({ onLogin }) {
 const NAV = [
   { id: "dashboard", icon: LayoutDashboard, label: "Panel general" },
   { id: "candidates", icon: Users, label: "Candidatos" },
-  { id: "analysis", icon: Brain, label: "Análisis IA" },
+  { id: "pipeline", icon: Layers, label: "Pipeline de selección" },
   { id: "forms", icon: FileText, label: "Formularios de cargo" },
   { id: "companies", icon: Building2, label: "Empresas" },
   { id: "settings", icon: Settings, label: "Configuración" },
@@ -628,8 +647,9 @@ function DashboardView({ candidates, companies, formSubmissions, setView }) {
 /* ═══════════════════════════════════════════════════════════
    CANDIDATES VIEW
 ═══════════════════════════════════════════════════════════ */
-const STATUS_OPTS = ["Activo", "En proceso", "Seleccionado", "Descartado"];
-const STATUS_COLOR = { Activo: "success", "En proceso": "info", Seleccionado: "teal", Descartado: "danger" };
+const STATUS_OPTS = ["Nuevo", "CV revisado", "Pre-seleccionado", "En entrevista", "Evaluación", "Finalista", "Seleccionado", "Descartado"];
+const STATUS_LEGACY = ["Activo", "En proceso"]; // soporte para datos existentes
+const STATUS_COLOR = { Nuevo:"neutral", "CV revisado":"info", "Pre-seleccionado":"info", "En entrevista":"warning", "Evaluación":"warning", Finalista:"teal", Seleccionado:"success", Descartado:"danger", Activo:"success", "En proceso":"info" };
 
 function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
   const [search, setSearch] = useState("");
@@ -638,6 +658,33 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [cvModal, setCvModal] = useState(null); // { url, fileName }
+
+  const viewCV = async (cvUrl, fileName) => {
+    try {
+      const r = await fetch(cvUrl, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+      if (r.ok) {
+        const blob = await r.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        setCvModal({ url: blobUrl, fileName, isBlob: true });
+      } else {
+        // Fallback: open directly
+        window.open(cvUrl, "_blank");
+      }
+    } catch { window.open(cvUrl, "_blank"); }
+  };
+
+  const downloadCV = async (cvUrl, fileName) => {
+    try {
+      const r = await fetch(cvUrl, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+      if (r.ok) {
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = fileName || "CV.pdf"; a.click();
+        URL.revokeObjectURL(url);
+      } else { window.open(cvUrl, "_blank"); }
+    } catch { window.open(cvUrl, "_blank"); }
+  };
   const positions = [...new Set(candidates.map(c => c.position).filter(Boolean))];
 
   const filtered = candidates.filter(c => {
@@ -747,10 +794,16 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
                     <td style={{ padding: "12px 16px" }}>
                       <div style={{ display: "flex", gap: 5 }}>
                         {c.cvUrl && (
-                          <a href={c.cvUrl} target="_blank" rel="noopener noreferrer" title="Ver CV en nueva pestaña"
-                            style={{ background: `${C.accent}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.accent, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
-                            <ExternalLink size={14} />
-                          </a>
+                          <>
+                            <button onClick={() => viewCV(c.cvUrl, c.cvFileName)} title="Ver CV"
+                              style={{ background: `${C.accent}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.accent, display: "inline-flex", alignItems: "center" }}>
+                              <Eye size={14} />
+                            </button>
+                            <button onClick={() => downloadCV(c.cvUrl, c.cvFileName)} title="Descargar CV"
+                              style={{ background: `${C.info}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.info, display: "inline-flex", alignItems: "center" }}>
+                              <Download size={14} />
+                            </button>
+                          </>
                         )}
                         <button onClick={() => { setEditing(c); setShowModal(true); }} style={{ background: `${C.info}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.info }}><Edit size={14} /></button>
                         <button onClick={() => handleDelete(c.id)} style={{ background: `${C.danger}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.danger }}><Trash2 size={14} /></button>
@@ -764,6 +817,25 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
       </Card>
 
       <CandidateModal open={showModal} onClose={() => setShowModal(false)} editing={editing} onSave={handleSave} saving={saving} />
+
+      {cvModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) { if (cvModal.isBlob) URL.revokeObjectURL(cvModal.url); setCvModal(null); } }}
+          style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16 }}>
+          <div style={{ background:C.card,borderRadius:16,width:"100%",maxWidth:860,maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 24px",borderBottom:`1px solid ${C.border}`,flexShrink:0 }}>
+              <div style={{ fontWeight:600,color:C.text,fontSize:16 }}>📎 {cvModal.fileName || "Hoja de vida"}</div>
+              <div style={{ display:"flex",gap:10 }}>
+                <Btn size="sm" onClick={() => downloadCV(cvModal.url, cvModal.fileName)}><Download size={14} /> Descargar</Btn>
+                <button onClick={() => { if (cvModal.isBlob) URL.revokeObjectURL(cvModal.url); setCvModal(null); }}
+                  style={{ background:"none",border:"none",cursor:"pointer",color:C.muted,display:"flex",padding:4 }}><X size={20} /></button>
+              </div>
+            </div>
+            <div style={{ flex:1,overflow:"auto",borderRadius:"0 0 16px 16px",minHeight:500 }}>
+              <iframe src={cvModal.url} style={{ width:"100%",height:"560px",border:"none" }} title="CV" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -844,105 +916,151 @@ function CandidateModal({ open, onClose, editing, onSave, saving }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   AI ANALYSIS VIEW
+   PIPELINE DE SELECCIÓN
 ═══════════════════════════════════════════════════════════ */
-function AIAnalysisView({ candidates }) {
-  const [selected, setSelected] = useState([]);
-  const [position, setPosition] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
+const PIPELINE_STAGES = [
+  { id: "Nuevo",           label: "Nuevo",            color: "#94A3B8", bg: "#F1F5F9" },
+  { id: "CV revisado",     label: "CV revisado",       color: "#2563EB", bg: "#DBEAFE" },
+  { id: "Pre-seleccionado",label: "Pre-seleccionado",  color: "#7C3AED", bg: "#EDE9FE" },
+  { id: "En entrevista",   label: "En entrevista",     color: "#D97706", bg: "#FEF3C7" },
+  { id: "Evaluación",      label: "Evaluación",        color: "#EA580C", bg: "#FEF3C7" },
+  { id: "Finalista",       label: "Finalista",         color: "#0D9488", bg: "#CCFBF1" },
+  { id: "Seleccionado",    label: "✅ Seleccionado",   color: "#059669", bg: "#DCFCE7" },
+  { id: "Descartado",      label: "❌ Descartado",     color: "#DC2626", bg: "#FEE2E2" },
+  { id: "Activo",          label: "Activo (heredado)", color: "#059669", bg: "#DCFCE7" },
+  { id: "En proceso",      label: "En proceso (heredado)", color: "#2563EB", bg: "#DBEAFE" },
+];
 
-  const toggle = id => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
-  const allSelected = candidates.length > 0 && selected.length === candidates.length;
+function PipelineView({ candidates, setCandidates, refreshCandidates }) {
+  const [posFilter, setPosFilter] = useState("");
+  const [moving, setMoving] = useState(null); // { candidateId, newStatus }
+  const positions = [...new Set(candidates.map(c => c.position).filter(Boolean))];
+  const filtered = posFilter ? candidates.filter(c => c.position === posFilter) : candidates;
+  
+  // Group candidates by status
+  const byStatus = {};
+  PIPELINE_STAGES.forEach(s => { byStatus[s.id] = []; });
+  filtered.forEach(c => {
+    const status = c.status || "Nuevo";
+    if (!byStatus[status]) byStatus[status] = [];
+    byStatus[status].push(c);
+  });
 
-  const analyze = async () => {
-    if (selected.length === 0) { setError("Selecciona al menos un candidato"); return; }
-    setLoading(true); setResult(null); setError("");
-    const sel = candidates.filter(c => selected.includes(c.id));
-    const cvBlock = sel.map((c, i) => `
---- CANDIDATO ${i + 1}: ${c.name.toUpperCase()} ---
-Cargo: ${c.position || "No especificado"} | Estado: ${c.status || "N/A"}
-Habilidades: ${c.skills || "No especificadas"}
-Resumen CV: ${c.cvText || "(Sin texto de CV)"}
-Notas: ${c.notes || "Ninguna"}`).join("\n");
+  // Only show stages that have candidates OR are main stages (not legacy)
+  const visibleStages = PIPELINE_STAGES.filter(s => 
+    !["Activo", "En proceso"].includes(s.id) || byStatus[s.id]?.length > 0
+  );
 
+  const moveCandidate = async (candidateId, newStatus) => {
+    setMoving(candidateId);
     try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: `Eres una consultora senior de RRHH. Analiza estos candidatos${position ? ` para el cargo de "${position}"` : ""}:\n${cvBlock}\n\nGenera un informe con:\n1. RESUMEN EJECUTIVO del pool\n2. ANÁLISIS INDIVIDUAL: fortalezas, áreas de mejora, idoneidad (Alta/Media/Baja) y calificación ★★★★★\n3. COMPARATIVA entre candidatos\n4. RECOMENDACIÓN FINAL justificada\nSé objetiva y profesional.` }] }),
-      });
-      const data = await resp.json();
-      if (data.content?.[0]?.text) setResult(data.content[0].text);
-      else setError("No se pudo obtener el análisis. Intenta de nuevo.");
-    } catch { setError("Error de conexión."); }
-    setLoading(false);
+      await db.update("candidates", candidateId, { status: newStatus });
+      setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: newStatus } : c));
+    } catch(e) { console.error(e); await refreshCandidates(); }
+    setMoving(null);
   };
 
-  const download = () => {
-    const blob = new Blob([`ANÁLISIS IA DE CANDIDATOS\nNorma Kuján · Consultoría & Coaching · ${new Date().toLocaleDateString("es-EC")}\n${"=".repeat(60)}\n\n${result}`], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `Analisis_Candidatos_${Date.now()}.txt`; a.click(); URL.revokeObjectURL(url);
-  };
+  const totalActive = candidates.filter(c => !["Seleccionado","Descartado"].includes(c.status)).length;
+  const totalSelected = candidates.filter(c => c.status === "Seleccionado").length;
+  const totalDiscarded = candidates.filter(c => c.status === "Descartado").length;
 
   return (
     <div className="fade-in">
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Análisis IA de candidatos</h1>
-        <p style={{ color: C.muted, fontSize: 14 }}>Selecciona CVs y obtén un informe profesional con inteligencia artificial</p>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Pipeline de selección</h1>
+        <p style={{ color: C.muted, fontSize: 14 }}>Visualiza y mueve candidatos a través de las etapas del proceso</p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20, alignItems: "start" }}>
-        <div>
-          <Card style={{ marginBottom: 14 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 12 }}>Contexto del análisis</h3>
-            <Inp label="Cargo a evaluar (opcional)" value={position} onChange={e => setPosition(e.target.value)} placeholder="ej: Gerente comercial..." />
-          </Card>
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "13px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Seleccionar CVs ({selected.length})</span>
-              {candidates.length > 0 && <button onClick={() => setSelected(allSelected ? [] : candidates.map(c => c.id))} style={{ background: "none", border: "none", cursor: "pointer", color: C.accent, fontSize: 12, fontWeight: 500, fontFamily: "inherit" }}>{allSelected ? "Desmarcar todos" : "Seleccionar todos"}</button>}
-            </div>
-            {candidates.length === 0 ? <p style={{ textAlign: "center", color: C.muted, padding: "24px 16px", fontSize: 13 }}>Primero agrega candidatos</p>
-              : <div style={{ maxHeight: 360, overflowY: "auto" }}>
-                {candidates.map(c => (
-                  <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 16px", borderBottom: `1px solid ${C.border}`, cursor: "pointer", background: selected.includes(c.id) ? `${C.accent}08` : "" }}>
-                    <input type="checkbox" checked={selected.includes(c.id)} onChange={() => toggle(c.id)} style={{ accentColor: C.accent, width: 15, height: 15 }} />
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${C.accent}20`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{(c.name || "?")[0].toUpperCase()}</div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{c.name}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{c.position || "Sin cargo"}{c.cvText ? " · texto disponible" : ""}{c.cvUrl ? " · CV ☁️" : ""}</div>
+
+      {/* Stats row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
+        {[
+          { label: "En proceso", value: totalActive, color: C.info },
+          { label: "Seleccionados", value: totalSelected, color: C.success },
+          { label: "Descartados", value: totalDiscarded, color: C.danger },
+          { label: "Total candidatos", value: candidates.length, color: C.accent },
+        ].map(s => (
+          <div key={s.label} style={{ background: C.card, borderRadius: 10, padding: "14px 18px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06)", borderLeft: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: C.text }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <label style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>Filtrar por cargo:</label>
+        <select value={posFilter} onChange={e => setPosFilter(e.target.value)}
+          style={{ border: `1.5px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 13, outline: "none", color: posFilter ? C.text : C.muted }}>
+          <option value="">Todos los cargos</option>
+          {positions.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        {filtered.length !== candidates.length && (
+          <span style={{ fontSize: 13, color: C.muted }}>Mostrando {filtered.length} de {candidates.length}</span>
+        )}
+      </div>
+
+      {candidates.length === 0 ? (
+        <div style={{ background: C.card, borderRadius: 12, padding: 56, textAlign: "center",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <Layers size={52} color={C.border} style={{ display: "block", margin: "0 auto 16px" }} />
+          <h3 style={{ color: C.text, marginBottom: 8 }}>Sin candidatos en el pipeline</h3>
+          <p style={{ color: C.muted, fontSize: 14 }}>Agrega candidatos en la sección "Candidatos" para verlos aquí.</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16, alignItems: "flex-start" }}>
+          {visibleStages.map(stage => {
+            const stageCandidates = byStatus[stage.id] || [];
+            return (
+              <div key={stage.id} style={{ minWidth: 220, maxWidth: 240, flexShrink: 0, background: "#F8FAFF",
+                borderRadius: 12, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                {/* Column header */}
+                <div style={{ padding: "12px 14px", background: stage.bg,
+                  borderBottom: `2px solid ${stage.color}40`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: stage.color }}>{stage.label}</span>
+                  <span style={{ background: stage.color, color: "#fff", borderRadius: 99, padding: "1px 8px",
+                    fontSize: 12, fontWeight: 600 }}>{stageCandidates.length}</span>
+                </div>
+                {/* Cards */}
+                <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8, minHeight: 80 }}>
+                  {stageCandidates.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "20px 8px", color: C.muted, fontSize: 12 }}>Sin candidatos</div>
+                  ) : stageCandidates.map(c => (
+                    <div key={c.id} style={{ background: C.card, borderRadius: 8, padding: "10px 12px",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${C.border}`,
+                      opacity: moving === c.id ? 0.5 : 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${C.accent}20`,
+                          color: C.accent, display: "flex", alignItems: "center", justifyContent: "center",
+                          fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                          {(c.name || "?")[0].toUpperCase()}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: C.text, fontSize: 13, overflow: "hidden",
+                            textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                          {c.position && <div style={{ color: C.muted, fontSize: 11 }}>{c.position}</div>}
+                        </div>
+                      </div>
+                      {/* Move buttons */}
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                        {visibleStages.filter(s => s.id !== stage.id && !["Activo","En proceso"].includes(s.id)).slice(0, 4).map(s => (
+                          <button key={s.id} onClick={() => moveCandidate(c.id, s.id)} disabled={moving === c.id}
+                            title={`Mover a: ${s.label}`}
+                            style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, border: `1px solid ${s.color}40`,
+                              background: s.bg, color: s.color, cursor: "pointer", fontWeight: 500,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 90 }}>
+                            → {s.label.replace("✅ ","").replace("❌ ","")}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </label>
-                ))}
-              </div>}
-            <div style={{ padding: 12, borderTop: `1px solid ${C.border}` }}>
-              <Btn fullWidth onClick={analyze} disabled={loading || selected.length === 0}>
-                {loading ? <><Spinner size={15} /> Analizando...</> : <><Zap size={15} /> Analizar {selected.length > 0 ? `${selected.length} CV${selected.length !== 1 ? "s" : ""}` : "CVs"}</>}
-              </Btn>
-            </div>
-          </Card>
-        </div>
-        <div>
-          {error && <div style={{ marginBottom: 16 }}><Alert type="error">{error}</Alert></div>}
-          {loading && <Card style={{ textAlign: "center", padding: 48 }}><Spinner size={36} /><p style={{ color: C.muted, fontSize: 14, marginTop: 16 }}>Generando informe profesional...</p></Card>}
-          {result && !loading && (
-            <Card className="fade-in">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: C.text }}>Resultado del análisis IA</h3>
-                <Btn variant="secondary" size="sm" onClick={download}><Download size={14} /> Descargar</Btn>
+                  ))}
+                </div>
               </div>
-              <div style={{ background: C.bg, borderRadius: 10, padding: 20, fontSize: 13.5, lineHeight: 1.85, color: C.text, whiteSpace: "pre-wrap", maxHeight: 560, overflowY: "auto", fontFamily: "inherit" }}>{result}</div>
-            </Card>
-          )}
-          {!result && !loading && (
-            <Card style={{ textAlign: "center", padding: 56 }}>
-              <Brain size={52} color={C.border} style={{ margin: "0 auto 16px" }} />
-              <h3 style={{ color: C.text, marginBottom: 8, fontSize: 17 }}>Listo para analizar candidatos</h3>
-              <p style={{ color: C.muted, fontSize: 14, maxWidth: 380, margin: "0 auto" }}>Selecciona candidatos del panel izquierdo y presiona "Analizar CVs".</p>
-            </Card>
-          )}
+            );
+          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1256,7 +1374,7 @@ function AdminApp({ user, view, setView, onLogout, candidates, companies, formSu
   const views = {
     dashboard: <DashboardView candidates={candidates} companies={companies} formSubmissions={formSubmissions} setView={setView} />,
     candidates: <CandidatesView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
-    analysis: <AIAnalysisView candidates={candidates} />,
+    pipeline: <PipelineView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     forms: <FormsView formSubmissions={formSubmissions} refreshForms={refreshForms} />,
     companies: <CompaniesView companies={companies} refreshCompanies={refreshCompanies} />,
     settings: <SettingsView user={user} candidates={candidates} companies={companies} formSubmissions={formSubmissions} />,
