@@ -526,8 +526,35 @@ async function submitForm() {
   btn.innerHTML = '<div class="spinner"></div> Enviando...';
 
   try {
+    const candidateId = uid();
+    let storedCvUrl = null;
+
+    // Upload CV to Supabase Storage (not as base64)
+    if (cvDataUri && cvFileName) {
+      try {
+        // Convert base64 back to binary for upload
+        const base64Data = cvDataUri.split(',')[1];
+        const byteChars = atob(base64Data);
+        const byteArr = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([byteArr], { type: 'application/pdf' });
+        const path = candidateId + '_' + Date.now() + '.pdf';
+        const uploadRes = await fetch(SB_URL + '/storage/v1/object/cvs/' + path, {
+          method: 'POST',
+          headers: {
+            'apikey': SB_KEY,
+            'Authorization': 'Bearer ' + SB_KEY,
+            'Content-Type': 'application/pdf',
+            'x-upsert': 'true',
+          },
+          body: blob,
+        });
+        if (uploadRes.ok) storedCvUrl = path;
+      } catch(e) { console.error('CV upload error:', e); }
+    }
+
     const candidate = {
-      id: uid(),
+      id: candidateId,
       name: getVal('nombre'),
       email: getVal('email'),
       phone: null,
@@ -536,7 +563,7 @@ async function submitForm() {
       skills: getVal('herramientas'),
       notes: buildNotes(),
       cv_file_name: cvFileName || null,
-      cv_url: cvDataUri || null,
+      cv_url: storedCvUrl || cvDataUri || null,
       cv_text: null,
     };
 
