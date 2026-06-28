@@ -686,6 +686,7 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [cvModal, setCvModal] = useState(null); // { url, fileName }
+  const [detailCandidate, setDetailCandidate] = useState(null); // candidate to view
 
   const viewCV = (cvUrl, fileName) => {
     if (!cvUrl) return;
@@ -821,7 +822,14 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
                             </button>
                           </>
                         )}
-                        <button onClick={() => { setEditing(c); setShowModal(true); }} style={{ background: `${C.info}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.info }}><Edit size={14} /></button>
+                        <button onClick={() => setDetailCandidate(c)} title="Ver respuestas completas"
+                          style={{ background: `${C.success}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.success, display: "inline-flex", alignItems: "center" }}>
+                          <Eye size={14}/>
+                        </button>
+                        <button onClick={() => { setEditing(c); setShowModal(true); }} title="Editar"
+                          style={{ background: `${C.info}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.info, display: "inline-flex", alignItems: "center" }}>
+                          <Edit size={14}/>
+                        </button>
                         <button onClick={() => handleDelete(c.id)} style={{ background: `${C.danger}15`, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.danger }}><Trash2 size={14} /></button>
                       </div>
                     </td>
@@ -833,6 +841,16 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
       </Card>
 
       <CandidateModal open={showModal} onClose={() => setShowModal(false)} editing={editing} onSave={handleSave} saving={saving} />
+
+      {/* ── DETAIL MODAL ── */}
+      {detailCandidate && (
+        <CandidateDetailModal
+          candidate={detailCandidate}
+          onClose={() => setDetailCandidate(null)}
+          onViewCV={viewCV}
+          onDownloadCV={downloadCV}
+        />
+      )}
 
       {cvModal && (
         <div onClick={e => { if (e.target === e.currentTarget) { if (cvModal.isBlob) URL.revokeObjectURL(cvModal.url); setCvModal(null); } }}
@@ -852,6 +870,251 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   CANDIDATE DETAIL MODAL
+═══════════════════════════════════════════════════════════ */
+function CandidateDetailModal({ candidate: c, onClose, onViewCV, onDownloadCV }) {
+  // Parse the notes field — detect if it's a public form submission
+  const isPublicForm = c.notes && c.notes.includes("POSTULACIÓN PÚBLICA");
+
+  // Parse structured notes into key-value sections
+  const parseNotes = (notes) => {
+    if (!notes) return [];
+    const lines = notes.split("\n");
+    const sections = [];
+    let currentSection = [];
+    lines.forEach(line => {
+      if (line.startsWith("─")) {
+        if (currentSection.length > 0) {
+          sections.push(currentSection);
+          currentSection = [];
+        }
+      } else if (line.trim()) {
+        currentSection.push(line);
+      }
+    });
+    if (currentSection.length > 0) sections.push(currentSection);
+    return sections;
+  };
+
+  // Extract a specific field from notes
+  const extractField = (notes, prefix) => {
+    if (!notes) return null;
+    const line = notes.split("\n").find(l => l.startsWith(prefix));
+    return line ? line.replace(prefix, "").trim() : null;
+  };
+
+  const sc = { Nuevo:"#94A3B8", "CV revisado":"#2563EB", "Pre-seleccionado":"#7C3AED",
+    "En entrevista":"#D97706", "Evaluación":"#EA580C", Finalista:"#0D9488",
+    Seleccionado:"#059669", Descartado:"#DC2626", Activo:"#059669", "En proceso":"#2563EB" };
+  const statusColor = sc[c.status] || C.muted;
+
+  // Personal info from notes
+  const cedula     = extractField(c.notes, "📄 Cédula:");
+  const nacimiento = extractField(c.notes, "🎂 Fecha de nacimiento:");
+  const civil      = extractField(c.notes, "💍 Estado civil:");
+  const ciudad     = extractField(c.notes, "📍 Ciudad:");
+  const vehiculo   = extractField(c.notes, "🚗 Posee vehículo:");
+  const titulo     = extractField(c.notes, "🎓 Título profesional:");
+  const maestria   = extractField(c.notes, "📚 Maestría:");
+  const salario    = extractField(c.notes, "💰 Aspiración salarial:");
+  const odoo       = extractField(c.notes, "🔧 Odoo para facturación:");
+
+  // Long-form answers — extract block after label
+  const extractBlock = (notes, label) => {
+    if (!notes) return null;
+    const lines = notes.split("\n");
+    const idx = lines.findIndex(l => l.includes(label));
+    if (idx < 0) return null;
+    const block = [];
+    for (let i = idx + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("─") || (lines[i].match(/^\d+\./) && i > idx + 1)) break;
+      if (lines[i].startsWith("📄") || lines[i].startsWith("🎂") ||
+          lines[i].startsWith("🔧") || lines[i].startsWith("💰") ||
+          lines[i].startsWith("📚") || lines[i].startsWith("🎓")) break;
+      block.push(lines[i]);
+    }
+    return block.join("\n").trim() || null;
+  };
+
+  const motivos    = extractBlock(c.notes, "Motivos de búsqueda laboral");
+  const virtudes   = extractBlock(c.notes, "Virtudes y cualidades");
+  const mejoras    = extractBlock(c.notes, "Oportunidades de mejora");
+  const herramientas = extractBlock(c.notes, "Herramientas tecnológicas") || c.skills;
+  const credito    = extractBlock(c.notes, "Experiencia en crédito");
+  const logro      = extractBlock(c.notes, "Mayor logro profesional");
+  const desvinculacion = extractBlock(c.notes, "Motivo de última desvinculación");
+
+  const Field = ({ label, value, icon }) => {
+    if (!value) return null;
+    return (
+      <div style={{ background: C.bg, borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase",
+          letterSpacing: "0.05em", marginBottom: 4 }}>{icon && icon + " "}{label}</div>
+        <div style={{ fontSize: 14, color: C.text, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{value}</div>
+      </div>
+    );
+  };
+
+  const Section = ({ title, color, children }) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ flex: 1, height: 1, background: C.border }}/>
+        <span style={{ fontSize: 11, fontWeight: 700, color: color || C.muted,
+          textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{title}</span>
+        <div style={{ flex: 1, height: 1, background: C.border }}/>
+      </div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex",
+        alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+      <div style={{ background: C.card, borderRadius: 16, width: "100%", maxWidth: 640,
+        maxHeight: "92vh", display: "flex", flexDirection: "column",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+
+        {/* Header */}
+        <div style={{ padding: "18px 24px", borderBottom: `1px solid ${C.border}`,
+          display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: "50%",
+            background: `${C.accent}20`, color: C.accent,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 700, fontSize: 20, flexShrink: 0 }}>
+            {(c.name || "?")[0].toUpperCase()}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, color: C.text,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
+              <span style={{ background: `${statusColor}18`, color: statusColor,
+                borderRadius: 99, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
+                {c.status || "Sin estado"}
+              </span>
+              {c.position && <span style={{ color: C.muted, fontSize: 13 }}>· {c.position}</span>}
+              {isPublicForm && <span style={{ background: C.infoL, color: C.info,
+                borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
+                📋 Formulario público
+              </span>}
+            </div>
+          </div>
+          <button onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer",
+              color: C.muted, display: "flex", padding: 4, flexShrink: 0 }}>
+            <X size={22}/>
+          </button>
+        </div>
+
+        {/* Body - scrollable */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+
+          {/* Contact info */}
+          <Section title="Información de contacto" color={C.accent}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {c.email && <Field label="Correo electrónico" value={c.email} icon="✉️"/>}
+              {c.phone && <Field label="Teléfono" value={c.phone} icon="📞"/>}
+              {cedula   && <Field label="Cédula" value={cedula} icon="🪪"/>}
+              {nacimiento && <Field label="Fecha de nacimiento" value={nacimiento} icon="🎂"/>}
+              {civil    && <Field label="Estado civil" value={civil} icon="💍"/>}
+              {ciudad   && <Field label="Ciudad" value={ciudad} icon="📍"/>}
+              {vehiculo && <Field label="Posee vehículo" value={vehiculo} icon="🚗"/>}
+            </div>
+          </Section>
+
+          {/* Professional profile */}
+          {(titulo || maestria || salario || herramientas || odoo) && (
+            <Section title="Perfil profesional" color={C.info}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {titulo    && <Field label="Título profesional" value={titulo} icon="🎓"/>}
+                {maestria  && <Field label="Maestría" value={maestria} icon="📚"/>}
+                {salario   && <Field label="Aspiración salarial" value={salario} icon="💰"/>}
+                {odoo      && <Field label="Maneja Odoo" value={odoo} icon="🔧"/>}
+              </div>
+              {herramientas && <Field label="Herramientas tecnológicas" value={herramientas} icon="💻"/>}
+            </Section>
+          )}
+
+          {/* Motivation & character */}
+          {(motivos || virtudes || mejoras) && (
+            <Section title="Motivación y perfil personal" color="#7C3AED">
+              {motivos  && <Field label="Motivos de búsqueda laboral" value={motivos} icon="🔍"/>}
+              {virtudes && <Field label="Virtudes y cualidades" value={virtudes} icon="⭐"/>}
+              {mejoras  && <Field label="Oportunidades de mejora" value={mejoras} icon="📈"/>}
+            </Section>
+          )}
+
+          {/* Experience */}
+          {(credito || logro || desvinculacion) && (
+            <Section title="Experiencia laboral" color={C.warning}>
+              {credito      && <Field label="Experiencia en crédito y cobranza" value={credito} icon="💳"/>}
+              {logro        && <Field label="Mayor logro profesional" value={logro} icon="🏆"/>}
+              {desvinculacion && <Field label="Motivo de última desvinculación" value={desvinculacion} icon="👋"/>}
+            </Section>
+          )}
+
+          {/* Manual notes (non-public-form) */}
+          {!isPublicForm && c.notes && (
+            <Section title="Notas internas">
+              <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px",
+                fontSize: 14, color: C.text, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                {c.notes}
+              </div>
+            </Section>
+          )}
+
+          {/* CV */}
+          {c.cvUrl && (
+            <Section title="Hoja de vida" color={C.success}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10,
+                background: `${C.success}10`, borderRadius: 10,
+                padding: "12px 16px", border: `1px solid ${C.success}30` }}>
+                <span style={{ fontSize: 24 }}>📎</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>{c.cvFileName || "Hoja de vida"}</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>CV adjunto</div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => onViewCV(c.cvUrl, c.cvFileName)}
+                    style={{ background: C.accent, color: "#fff", border: "none",
+                      borderRadius: 8, padding: "7px 14px", cursor: "pointer",
+                      fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}>
+                    <Eye size={14}/> Ver
+                  </button>
+                  <button onClick={() => onDownloadCV(c.cvUrl, c.cvFileName)}
+                    style={{ background: C.info, color: "#fff", border: "none",
+                      borderRadius: 8, padding: "7px 14px", cursor: "pointer",
+                      fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}>
+                    <Download size={14}/> Descargar
+                  </button>
+                </div>
+              </div>
+            </Section>
+          )}
+
+          <div style={{ height: 8 }}/>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "14px 24px", borderTop: `1px solid ${C.border}`,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          flexShrink: 0, background: C.bg, borderRadius: "0 0 16px 16px" }}>
+          <span style={{ fontSize: 12, color: C.muted }}>
+            Registrado: {c.createdAt ? new Date(c.createdAt).toLocaleDateString("es-EC") : "—"}
+          </span>
+          <button onClick={onClose}
+            style={{ background: C.primary, color: "#fff", border: "none", borderRadius: 8,
+              padding: "8px 20px", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "inherit" }}>
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
