@@ -1384,6 +1384,35 @@ function AdminApp({ user, view, setView, onLogout, candidates, companies, formSu
 }
 
 /* ═══════════════════════════════════════════════════════════
+   SUBCOMPONENTES DEL FORMULARIO DE CARGO
+   Definidos FUERA de CompanyApp para que React no los desmonte
+   en cada keystroke y el foco del input no se pierda
+═══════════════════════════════════════════════════════════ */
+const SH = ({ n, title }) => (
+  <div style={{ background: C.primary, color: "#fff", padding: "10px 16px",
+    borderRadius: "10px 10px 0 0", fontWeight: 700, fontSize: 13, letterSpacing: "0.03em" }}>
+    {n}. {title}
+  </div>
+);
+
+const SB = ({ children }) => (
+  <div style={{ border: `1.5px solid ${C.border}`, borderTop: "none",
+    borderRadius: "0 0 10px 10px", padding: 20, marginBottom: 20 }}>
+    {children}
+  </div>
+);
+
+const Cb = ({ label, checked, onChange }) => (
+  <label style={{ display: "flex", alignItems: "center", gap: 8,
+    cursor: "pointer", fontSize: 13, color: C.text, padding: "3px 0" }}>
+    <input type="checkbox" checked={checked} onChange={onChange}
+      style={{ accentColor: C.accent, width: 15, height: 15 }} />
+    {label}
+  </label>
+);
+
+/* ═══════════════════════════════════════════════════════════
+   COMPANY FORM APP
    COMPANY FORM APP
 ═══════════════════════════════════════════════════════════ */
 function CompanyApp({ user, onLogout, onSubmit }) {
@@ -1399,10 +1428,6 @@ function CompanyApp({ user, onLogout, onSubmit }) {
     await onSubmit(form);
     setSending(false); setSubmitted(true);
   };
-  const fi = `border:1.5px solid ${C.border};border-radius:8px;padding:9px 12px;font-size:14px;outline:none;width:100%;font-family:inherit`;
-  const SH = ({ n, title }) => <div style={{ background: C.primary, color: "#fff", padding: "10px 16px", borderRadius: "10px 10px 0 0", fontWeight: 700, fontSize: 13, letterSpacing: "0.03em" }}>{n}. {title}</div>;
-  const SB = ({ children }) => <div style={{ border: `1.5px solid ${C.border}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: 20, marginBottom: 20 }}>{children}</div>;
-  const Cb = ({ label, checked, onChange }) => <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: C.text, padding: "3px 0" }}><input type="checkbox" checked={checked} onChange={onChange} style={{ accentColor: C.accent, width: 15, height: 15 }} />{label}</label>;
   const lugarTotal = Object.values(form.lugarTrabajo).reduce((a, v) => a + (parseInt(v) || 0), 0);
 
   if (submitted) return (
