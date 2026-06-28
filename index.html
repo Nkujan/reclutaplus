@@ -295,6 +295,17 @@ const Star = _Icon([
 const ChevronDown = _Icon([
   ["polyline", { points: "6 9 12 15 18 9" }],
 ]);
+const MessageSquare = _Icon([
+  ["path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" }],
+]);
+const Send = _Icon([
+  ["line", { x1: "22", y1: "2", x2: "11", y2: "13" }],
+  ["polygon", { points: "22 2 15 22 11 13 2 9 22 2" }],
+]);
+const Bell = _Icon([
+  ["path", { d: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" }],
+  ["path", { d: "M13.73 21a2 2 0 0 1-3.46 0" }],
+]);
 /* ═══════════════════════════════════════════════════════════
    SUPABASE CONFIG
 ═══════════════════════════════════════════════════════════ */
@@ -359,7 +370,16 @@ const db = {
       });
     } catch (e) { console.error(e); }
   },
+  async getConsultations() {
+    return await this.get("consultations", "order=created_at.desc");
+  },
+  async markConsultationRead(id) {
+    return await this.update("consultations", id, { read: true });
+  },
 };
+
+/* WhatsApp de la consultora */
+const WA_NUMBER = "593978806524";
 
 /* ═══════════════════════════════════════════════════════════
    MAPPERS (DB ↔ App)
@@ -367,6 +387,7 @@ const db = {
 const mapUser = r => ({ id: r.id, username: r.username, password: r.password, role: r.role, name: r.name, companyName: r.company_name, email: r.email, active: r.active, createdAt: r.created_at });
 const mapCandidate = r => ({ id: r.id, name: r.name, email: r.email, phone: r.phone, position: r.position, status: r.status, skills: r.skills, notes: r.notes, cvFileName: r.cv_file_name, cvUrl: r.cv_url, cvText: r.cv_text, createdAt: r.created_at });
 const mapForm = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, formData: r.form_data, downloaded: r.downloaded, submittedAt: r.submitted_at });
+const mapConsultation = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, message: r.message, read: r.read, createdAt: r.created_at });
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const fmtDate = d => d ? new Date(d).toLocaleDateString("es-EC") : "-";
@@ -533,10 +554,11 @@ const NAV = [
   { id: "pipeline", icon: Layers, label: "Pipeline de selección" },
   { id: "forms", icon: FileText, label: "Formularios de cargo" },
   { id: "companies", icon: Building2, label: "Empresas" },
+  { id: "consultations", icon: MessageSquare, label: "Consultas de empresas", badge: true },
   { id: "settings", icon: Settings, label: "Configuración" },
 ];
 
-function Sidebar({ view, setView, user, onLogout }) {
+function Sidebar({ view, setView, user, onLogout, unreadConsultations = 0 }) {
   return (
     <div style={{ width: 248, background: C.primary, display: "flex", flexDirection: "column", height: "100vh", position: "fixed", left: 0, top: 0, zIndex: 100, boxShadow: "4px 0 16px rgba(0,0,0,0.15)" }}>
       <div style={{ padding: "22px 18px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
@@ -550,7 +572,12 @@ function Sidebar({ view, setView, user, onLogout }) {
             <button key={id} onClick={() => setView(id)} className={active ? "" : "rp-nav"}
               style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "10px 12px", borderRadius: 9, marginBottom: 2, background: active ? "rgba(13,148,136,0.2)" : "transparent", border: `1px solid ${active ? "rgba(13,148,136,0.35)" : "transparent"}`, borderLeft: `3px solid ${active ? C.accent : "transparent"}`, color: active ? "#fff" : C.sideText, cursor: "pointer", textAlign: "left", transition: "all 0.15s", fontFamily: "inherit" }}>
               <Icon size={17} style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400 }}>{label}</span>
+              <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400, flex: 1 }}>{label}</span>
+              {badge && id === "consultations" && unreadConsultations > 0 && (
+                <span style={{ background: "#EF4444", color: "#fff", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "1px 7px", minWidth: 20, textAlign: "center" }}>
+                  {unreadConsultations}
+                </span>
+              )}
             </button>
           );
         })}
@@ -1309,6 +1336,150 @@ function CompaniesView({ companies, refreshCompanies }) {
   );
 }
 
+
+/* ═══════════════════════════════════════════════════════════
+   CONSULTATIONS VIEW (Consultas de empresas)
+═══════════════════════════════════════════════════════════ */
+function ConsultationsView({ consultations, refreshConsultations }) {
+  const [filter, setFilter] = useState("all");
+  const unread = consultations.filter(c => !c.read);
+  const filtered = filter === "unread"
+    ? unread
+    : filter === "read"
+      ? consultations.filter(c => c.read)
+      : consultations;
+
+  const markRead = async id => {
+    await db.markConsultationRead(id);
+    await refreshConsultations();
+  };
+
+  const markAllRead = async () => {
+    await Promise.all(unread.map(c => db.markConsultationRead(c.id)));
+    await refreshConsultations();
+  };
+
+  const openWhatsApp = (msg, companyName) => {
+    const text = encodeURIComponent(`Hola, respondo tu consulta sobre: "${msg.substring(0, 80)}${msg.length > 80 ? "..." : ""}"`);
+    window.open(`https://wa.me/${WA_NUMBER}?text=${text}`, "_blank");
+  };
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Consultas de empresas</h1>
+          <p style={{ color: C.muted, fontSize: 14 }}>Mensajes enviados por empresas a través del chat de ayuda</p>
+        </div>
+        {unread.length > 0 && (
+          <Btn size="sm" variant="secondary" onClick={markAllRead}>
+            <Check size={14} /> Marcar todas como leídas
+          </Btn>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
+        {[
+          { label: "Total recibidas", value: consultations.length, color: C.info },
+          { label: "Sin leer", value: unread.length, color: C.danger },
+          { label: "Respondidas", value: consultations.filter(c => c.read).length, color: C.success },
+        ].map(s => (
+          <div key={s.label} style={{ background: C.card, borderRadius: 10, padding: "14px 18px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06)", borderLeft: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: 26, fontWeight: 700, color: C.text }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[["all", "Todas"], ["unread", "Sin leer"], ["read", "Leídas"]].map(([val, lbl]) => (
+          <button key={val} onClick={() => setFilter(val)}
+            style={{ padding: "6px 16px", borderRadius: 99, border: "1.5px solid",
+              borderColor: filter === val ? C.accent : C.border,
+              background: filter === val ? `${C.accent}15` : "transparent",
+              color: filter === val ? C.accent : C.muted,
+              cursor: "pointer", fontSize: 13, fontWeight: filter === val ? 600 : 400, fontFamily: "inherit" }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {/* Messages list */}
+      {consultations.length === 0 ? (
+        <div style={{ background: C.card, borderRadius: 12, padding: 56, textAlign: "center",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <MessageSquare size={52} color={C.border} style={{ display: "block", margin: "0 auto 16px" }} />
+          <h3 style={{ color: C.text, marginBottom: 8 }}>Sin consultas aún</h3>
+          <p style={{ color: C.muted, fontSize: 14 }}>Cuando una empresa envíe una consulta desde el formulario, aparecerá aquí.</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ background: C.card, borderRadius: 12, padding: 40, textAlign: "center",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <p style={{ color: C.muted }}>No hay mensajes en esta categoría</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {filtered.map(c => (
+            <div key={c.id} style={{ background: C.card, borderRadius: 12, padding: 20,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+              border: `1.5px solid ${c.read ? C.border : "#3B82F6"}`,
+              opacity: c.read ? 0.85 : 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: "50%",
+                    background: c.read ? `${C.muted}20` : `${C.info}20`,
+                    color: c.read ? C.muted : C.info,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                    {(c.companyName || "?")[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: C.text, fontSize: 15 }}>{c.companyName}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>{new Date(c.createdAt).toLocaleString("es-EC", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {!c.read && (
+                    <span style={{ background: "#EF4444", color: "#fff", borderRadius: 99,
+                      fontSize: 11, fontWeight: 700, padding: "2px 10px" }}>NUEVO</span>
+                  )}
+                  {!c.read && (
+                    <Btn size="sm" variant="secondary" onClick={() => markRead(c.id)}>
+                      <Check size={13} /> Leído
+                    </Btn>
+                  )}
+                </div>
+              </div>
+              <div style={{ background: C.bg, borderRadius: 10, padding: "12px 16px",
+                fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 12 }}>
+                {c.message}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={() => {
+                    const text = encodeURIComponent(`Hola ${c.companyName}, recibí tu consulta: "${c.message.substring(0, 60)}${c.message.length > 60 ? "..." : ""}". Te respondo:`);
+                    window.open("https://wa.me/" + WA_NUMBER + "?text=" + text, "_blank");
+                    if (!c.read) markRead(c.id);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 8, background: "#25D366",
+                    color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px",
+                    cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  Responder por WhatsApp
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════
    SETTINGS VIEW
 ═══════════════════════════════════════════════════════════ */
@@ -1364,18 +1535,19 @@ function SettingsView({ user, candidates, companies, formSubmissions }) {
 /* ═══════════════════════════════════════════════════════════
    ADMIN APP
 ═══════════════════════════════════════════════════════════ */
-function AdminApp({ user, view, setView, onLogout, candidates, companies, formSubmissions, setCandidates, refreshCandidates, refreshCompanies, refreshForms }) {
+function AdminApp({ user, view, setView, onLogout, candidates, companies, formSubmissions, consultations, setCandidates, refreshCandidates, refreshCompanies, refreshForms, refreshConsultations }) {
   const views = {
     dashboard: <DashboardView candidates={candidates} companies={companies} formSubmissions={formSubmissions} setView={setView} />,
     candidates: <CandidatesView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     pipeline: <PipelineView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     forms: <FormsView formSubmissions={formSubmissions} refreshForms={refreshForms} />,
     companies: <CompaniesView companies={companies} refreshCompanies={refreshCompanies} />,
+    consultations: <ConsultationsView consultations={consultations} refreshConsultations={refreshConsultations} />,
     settings: <SettingsView user={user} candidates={candidates} companies={companies} formSubmissions={formSubmissions} />,
   };
   return (
     <div style={{ display: "flex", background: C.bg, minHeight: "100vh" }}>
-      <Sidebar view={view} setView={setView} user={user} onLogout={onLogout} />
+      <Sidebar view={view} setView={setView} user={user} onLogout={onLogout} unreadConsultations={consultations.filter(c => !c.read).length} />
       <main style={{ marginLeft: 248, flex: 1, padding: "28px 28px 48px", minHeight: "100vh" }}>
         {views[view] || views.dashboard}
       </main>
@@ -1420,6 +1592,39 @@ function CompanyApp({ user, onLogout, onSubmit }) {
   const [form, setForm] = useState(EMPTY);
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
+  // Chat de ayuda
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMsg, setChatMsg] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatSent, setChatSent] = useState(false);
+
+  const sendChat = async () => {
+    if (!chatMsg.trim()) return;
+    setChatSending(true);
+    try {
+      await db.insert("consultations", {
+        id: uid(),
+        company_id: user.id,
+        company_name: user.companyName || user.name,
+        message: chatMsg.trim(),
+        read: false,
+      });
+      const text = encodeURIComponent(
+        `💼 Consulta de ${user.companyName || user.name}:
+
+${chatMsg.trim()}
+
+_(enviado desde ReclutaPlus)_`
+      );
+      window.open("https://wa.me/" + WA_NUMBER + "?text=" + text, "_blank");
+      setChatSent(true);
+      setChatMsg("");
+      setTimeout(() => setChatSent(false), 4000);
+    } catch (e) {
+      alert("Error al enviar. Intenta de nuevo.");
+    }
+    setChatSending(false);
+  };
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const setNested = (parent, k) => e => { const v = e.target.type === "checkbox" ? e.target.checked : e.target.value; setForm(f => ({ ...f, [parent]: { ...f[parent], [k]: v } })); };
   const handleSubmit = async () => {
@@ -1656,6 +1861,7 @@ function App() {
   const [candidates, setCandidates] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [formSubmissions, setFormSubmissions] = useState([]);
+  const [consultations, setConsultations] = useState([]);
 
   const refreshCandidates = async () => {
     const data = await db.get("candidates", "order=created_at.desc");
@@ -1669,10 +1875,14 @@ function App() {
     const data = await db.get("form_submissions", "order=submitted_at.desc");
     setFormSubmissions(data.map(mapForm));
   };
+  const refreshConsultations = async () => {
+    const data = await db.getConsultations();
+    setConsultations(data.map(mapConsultation));
+  };
 
   useEffect(() => {
     (async () => {
-      await Promise.all([refreshCandidates(), refreshCompanies(), refreshForms()]);
+      await Promise.all([refreshCandidates(), refreshCompanies(), refreshForms(), refreshConsultations()]);
       setLoading(false);
     })();
   }, []);
@@ -1721,10 +1931,12 @@ function App() {
       <AdminApp
         user={user} view={view} setView={setView} onLogout={handleLogout}
         candidates={candidates} companies={companies} formSubmissions={formSubmissions}
+        consultations={consultations}
         setCandidates={setCandidates}
         refreshCandidates={refreshCandidates}
         refreshCompanies={refreshCompanies}
         refreshForms={refreshForms}
+        refreshConsultations={refreshConsultations}
       />
     </>
   );
