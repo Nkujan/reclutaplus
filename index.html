@@ -306,6 +306,28 @@ const Bell = _Icon([
   ["path", { d: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" }],
   ["path", { d: "M13.73 21a2 2 0 0 1-3.46 0" }],
 ]);
+const CalendarIcon = _Icon([
+  ["rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }],
+  ["line", { x1: "16", y1: "2", x2: "16", y2: "6" }],
+  ["line", { x1: "8", y1: "2", x2: "8", y2: "6" }],
+  ["line", { x1: "3", y1: "10", x2: "21", y2: "10" }],
+]);
+const ChevronLeft = _Icon([
+  ["polyline", { points: "15 18 9 12 15 6" }],
+]);
+const Camera = _Icon([
+  ["path", { d: "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" }],
+  ["circle", { cx: "12", cy: "13", r: "4" }],
+]);
+const ClipboardList = _Icon([
+  ["path", { d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" }],
+  ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1", ry: "1" }],
+  ["line", { x1: "9", y1: "12", x2: "15", y2: "12" }],
+  ["line", { x1: "9", y1: "16", x2: "15", y2: "16" }],
+]);
+const ThumbsUp = _Icon([
+  ["path", { d: "M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" }],
+]);
 /* ═══════════════════════════════════════════════════════════
    SUPABASE CONFIG
 ═══════════════════════════════════════════════════════════ */
@@ -381,13 +403,26 @@ const db = {
 /* WhatsApp de la consultora */
 const WA_NUMBER = "593979954126";
 
+const EVENT_TYPES = [
+  { id: "Entrevista", color: "#2563EB", bg: "#DBEAFE" },
+  { id: "Evaluación", color: "#7C3AED", bg: "#EDE9FE" },
+  { id: "Llamada", color: "#0D9488", bg: "#CCFBF1" },
+  { id: "Reunión", color: "#D97706", bg: "#FEF3C7" },
+  { id: "Otro", color: "#64748B", bg: "#F1F5F9" },
+];
+
+const SERVICE_DISCLAIMER = "Toda la información recopilada y tratada durante el proceso de selección será gestionada con estricta confidencialidad y en cumplimiento de la normativa vigente en materia de protección de datos personales, aplicando las medidas técnicas, organizativas y de seguridad necesarias para garantizar su integridad, disponibilidad y resguardo. Asimismo, la consultora garantiza la idoneidad del proceso de reclutamiento y selección ejecutado; por ello, en caso de que el candidato contratado se desvincule voluntariamente o sea separado de la organización por causas atribuibles a su desempeño dentro de los primeros tres (3) meses de contratación, la consultora realizará un nuevo proceso de búsqueda, evaluación y selección para la misma posición, asumiendo íntegramente los costos asociados a dicho reemplazo.";
+
 /* ═══════════════════════════════════════════════════════════
    MAPPERS (DB ↔ App)
 ═══════════════════════════════════════════════════════════ */
-const mapUser = r => ({ id: r.id, username: r.username, password: r.password, role: r.role, name: r.name, companyName: r.company_name, email: r.email, active: r.active, createdAt: r.created_at });
+const mapUser = r => ({ id: r.id, username: r.username, password: r.password, role: r.role, name: r.name, companyName: r.company_name, email: r.email, active: r.active, createdAt: r.created_at, logoUrl: r.logo_url || null });
 const mapCandidate = r => ({ id: r.id, name: r.name, email: r.email, phone: r.phone, position: r.position, status: r.status, skills: r.skills, notes: r.notes, cvFileName: r.cv_file_name, cvUrl: r.cv_url, cvText: r.cv_text, createdAt: r.created_at });
 const mapForm = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, formData: r.form_data, downloaded: r.downloaded, submittedAt: r.submitted_at });
 const mapConsultation = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, message: r.message, read: r.read, createdAt: r.created_at });
+const mapPositionRequest = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, positionName: r.position_name, quantity: r.quantity, salaryRange: r.salary_range, startDate: r.start_date, createdAt: r.created_at });
+const mapSurvey = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, q1: r.q1_facilidad, q2: r.q2_satisfaccion, q3: r.q3_recomendaria, comment: r.comentario, createdAt: r.created_at });
+const mapEvent = r => ({ id: r.id, title: r.title, eventType: r.event_type, eventDate: r.event_date, eventTime: r.event_time, candidateId: r.candidate_id, candidateName: r.candidate_name, companyName: r.company_name, notes: r.notes, status: r.status, createdAt: r.created_at });
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const fmtDate = d => d ? new Date(d).toLocaleDateString("es-EC") : "-";
@@ -553,8 +588,10 @@ const NAV = [
   { id: "candidates", icon: Users, label: "Candidatos" },
   { id: "pipeline", icon: Layers, label: "Pipeline de selección" },
   { id: "forms", icon: FileText, label: "Formularios de cargo" },
+  { id: "positionRequests", icon: ClipboardList, label: "Posiciones requeridas" },
   { id: "companies", icon: Building2, label: "Empresas" },
-  { id: "consultations", icon: MessageSquare, label: "Consultas de empresas", badge: true },
+  { id: "feedback", icon: MessageSquare, label: "Feedback empresarial", badge: true },
+  { id: "calendar", icon: CalendarIcon, label: "Calendario y alertas" },
   { id: "settings", icon: Settings, label: "Configuración" },
 ];
 
@@ -573,7 +610,7 @@ function Sidebar({ view, setView, user, onLogout, unreadConsultations = 0 }) {
               style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "10px 12px", borderRadius: 9, marginBottom: 2, background: active ? "rgba(13,148,136,0.2)" : "transparent", border: `1px solid ${active ? "rgba(13,148,136,0.35)" : "transparent"}`, borderLeft: `3px solid ${active ? C.accent : "transparent"}`, color: active ? "#fff" : C.sideText, cursor: "pointer", textAlign: "left", transition: "all 0.15s", fontFamily: "inherit" }}>
               <Icon size={17} style={{ flexShrink: 0 }} />
               <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400, flex: 1 }}>{label}</span>
-              {badge && id === "consultations" && unreadConsultations > 0 && (
+              {badge && id === "feedback" && unreadConsultations > 0 && (
                 <span style={{ background: "#EF4444", color: "#fff", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "1px 7px", minWidth: 20, textAlign: "center" }}>
                   {unreadConsultations}
                 </span>
@@ -615,7 +652,7 @@ function DashboardView({ candidates, companies, formSubmissions, setView }) {
         <StatCard label="Candidatos registrados" value={candidates.length} icon={Users} color={C.accent} sub={`${candidates.filter(c => c.status === "Activo").length} activos`} onClick={() => setView("candidates")} />
         <StatCard label="Formularios recibidos" value={formSubmissions.length} icon={FileText} color={C.info} sub={pending.length > 0 ? `${pending.length} sin revisar` : "Todos revisados"} onClick={() => setView("forms")} />
         <StatCard label="Empresas activas" value={companies.length} icon={Building2} color={C.warning} onClick={() => setView("companies")} />
-        <StatCard label="Cargos distintos" value={positions.length} icon={Briefcase} color={C.success} />
+        <StatCard label="CVs recibidos" value={candidates.filter(c => c.cvUrl).length} icon={Briefcase} color={C.success} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Card>
@@ -1649,7 +1686,24 @@ function CompaniesView({ companies, refreshCompanies }) {
 /* ═══════════════════════════════════════════════════════════
    CONSULTATIONS VIEW (Consultas de empresas)
 ═══════════════════════════════════════════════════════════ */
-function ConsultationsView({ consultations, refreshConsultations }) {
+
+/* ═══════════════════════════════════════════════════════════
+   STAR DISPLAY (solo lectura, para mostrar calificaciones)
+═══════════════════════════════════════════════════════════ */
+function StarDisplay({ value = 0, size = 13 }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 1, verticalAlign: "middle" }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <svg key={n} width={size} height={size} viewBox="0 0 24 24"
+          fill={n <= value ? "#F59E0B" : "none"} stroke={n <= value ? "#F59E0B" : "#CBD5E1"} strokeWidth="1.5">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
+function FeedbackView({ consultations, refreshConsultations, surveys }) {
   const [filter, setFilter] = useState("all");
   const unread = consultations.filter(c => !c.read);
   const filtered = filter === "unread"
@@ -1677,8 +1731,8 @@ function ConsultationsView({ consultations, refreshConsultations }) {
     <div className="fade-in">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Consultas de empresas</h1>
-          <p style={{ color: C.muted, fontSize: 14 }}>Mensajes enviados por empresas a través del chat de ayuda</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Feedback empresarial</h1>
+          <p style={{ color: C.muted, fontSize: 14 }}>Encuestas de satisfacción y consultas enviadas por tus empresas</p>
         </div>
         {unread.length > 0 && (
           <Btn size="sm" variant="secondary" onClick={markAllRead}>
@@ -1687,6 +1741,53 @@ function ConsultationsView({ consultations, refreshConsultations }) {
         )}
       </div>
 
+
+      {/* Encuestas de satisfacción */}
+      <Card style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <ThumbsUp size={16} color={C.accent} /> Encuestas de satisfacción
+        </h3>
+        {surveys.length === 0 ? (
+          <p style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "16px 0" }}>
+            Aún no hay encuestas respondidas. Aparecerán aquí cuando una empresa envíe su formulario de cargo.
+          </p>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
+              {[
+                ["Facilidad del formulario", surveys.reduce((a, s) => a + (s.q1 || 0), 0) / surveys.length],
+                ["Satisfacción del proceso", surveys.reduce((a, s) => a + (s.q2 || 0), 0) / surveys.length],
+                ["Probabilidad de recomendar", surveys.reduce((a, s) => a + (s.q3 || 0), 0) / surveys.length],
+              ].map(([label, avg]) => (
+                <div key={label} style={{ background: C.bg, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: C.accent }}>{avg.toFixed(1)}<span style={{ fontSize: 14, color: C.muted }}>/5</span></div>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 260, overflowY: "auto" }}>
+              {[...surveys].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(s => (
+                <div key={s.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13.5, color: C.text }}>{s.companyName}</span>
+                    <span style={{ fontSize: 11, color: C.muted }}>{new Date(s.createdAt).toLocaleDateString("es-EC")}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: s.comment ? 8 : 0 }}>
+                    <span style={{ fontSize: 12, color: C.muted }}>Facilidad: <StarDisplay value={s.q1} /></span>
+                    <span style={{ fontSize: 12, color: C.muted }}>Satisfacción: <StarDisplay value={s.q2} /></span>
+                    <span style={{ fontSize: 12, color: C.muted }}>Recomienda: <StarDisplay value={s.q3} /></span>
+                  </div>
+                  {s.comment && <div style={{ fontSize: 13, color: C.text, background: C.bg, borderRadius: 8, padding: "8px 12px" }}>{s.comment}</div>}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Card>
+
+      <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+        <MessageSquare size={16} color={C.info} /> Consultas vía chat
+      </h3>
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
         {[
@@ -1789,6 +1890,277 @@ function ConsultationsView({ consultations, refreshConsultations }) {
   );
 }
 
+
+/* ═══════════════════════════════════════════════════════════
+   POSITION REQUESTS VIEW (admin)
+═══════════════════════════════════════════════════════════ */
+function PositionRequestsView({ positionRequests }) {
+  const sorted = [...positionRequests].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return (
+    <div className="fade-in">
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Posiciones requeridas</h1>
+        <p style={{ color: C.muted, fontSize: 14 }}>Solicitudes de personal enviadas por tus empresas clientes · {positionRequests.length} recibidas</p>
+      </div>
+      {positionRequests.length === 0 ? (
+        <Card style={{ textAlign: "center", padding: 56 }}>
+          <ClipboardList size={52} color={C.border} style={{ display: "block", margin: "0 auto 16px" }} />
+          <h3 style={{ color: C.text, marginBottom: 8 }}>Sin solicitudes aún</h3>
+          <p style={{ color: C.muted, fontSize: 14 }}>Cuando una empresa indique qué posiciones necesita, aparecerán aquí.</p>
+        </Card>
+      ) : (
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+                  {["Empresa", "Posición", "Cantidad", "Rango salarial", "Fecha de inicio", "Solicitado"].map(h => (
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(p => (
+                  <tr key={p.id} className="rp-row" style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "12px 16px", fontWeight: 500, color: C.text, fontSize: 14 }}>{p.companyName}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 14, color: C.text }}>{p.positionName}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 14, color: C.text }}>
+                      <Badge color="info">{p.quantity} {p.quantity === 1 ? "persona" : "personas"}</Badge>
+                    </td>
+                    <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted }}>{p.salaryRange || "—"}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted }}>{p.startDate ? new Date(p.startDate + "T00:00:00").toLocaleDateString("es-EC") : "—"}</td>
+                    <td style={{ padding: "12px 16px", fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{new Date(p.createdAt).toLocaleDateString("es-EC")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALENDARIO Y ALERTAS (admin)
+═══════════════════════════════════════════════════════════ */
+function CalendarView({ events, refreshEvents, candidates }) {
+  const [cursor, setCursor] = useState(new Date());
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [prefillDate, setPrefillDate] = useState(null);
+
+  const year = cursor.getFullYear(), month = cursor.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = cursor.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const pad2 = n => String(n).padStart(2, "0");
+  const dateKey = d => `${year}-${pad2(month + 1)}-${pad2(d)}`;
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  const eventsByDay = {};
+  events.forEach(ev => {
+    const key = (ev.eventDate || "").slice(0, 10);
+    if (!eventsByDay[key]) eventsByDay[key] = [];
+    eventsByDay[key].push(ev);
+  });
+
+  const openNew = d => { setEditing(null); setPrefillDate(d ? dateKey(d) : todayKey); setModalOpen(true); };
+  const openEdit = ev => { setEditing(ev); setModalOpen(true); };
+
+  const handleSave = async data => {
+    if (editing) await db.update("calendar_events", editing.id, data);
+    else await db.insert("calendar_events", { id: uid(), ...data });
+    await refreshEvents();
+    setModalOpen(false);
+  };
+  const handleDelete = async id => {
+    if (!confirm("¿Eliminar este evento?")) return;
+    await db.del("calendar_events", id);
+    await refreshEvents();
+    setModalOpen(false);
+  };
+
+  const upcoming = events
+    .filter(e => (e.eventDate || "") >= todayKey && e.status !== "Cancelado")
+    .sort((a, b) => (a.eventDate + (a.eventTime || "")).localeCompare(b.eventDate + (b.eventTime || "")))
+    .slice(0, 8);
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Calendario y alertas</h1>
+          <p style={{ color: C.muted, fontSize: 14 }}>Agenda entrevistas, evaluaciones y citas del proceso de selección</p>
+        </div>
+        <Btn onClick={() => openNew(null)}><Plus size={16} /> Nuevo evento</Btn>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 20, alignItems: "start" }}>
+        <Card style={{ padding: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <button onClick={() => setCursor(new Date(year, month - 1, 1))} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: 7, cursor: "pointer", display: "flex" }}><ChevronLeft size={16} /></button>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, textTransform: "capitalize" }}>{monthLabel}</h3>
+            <button onClick={() => setCursor(new Date(year, month + 1, 1))} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: 7, cursor: "pointer", display: "flex" }}><ChevronRight size={16} /></button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+            {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map(d => (
+              <div key={d} style={{ textAlign: "center", fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase" }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+            {cells.map((d, i) => {
+              if (d === null) return <div key={i} />;
+              const key = dateKey(d);
+              const dayEvents = eventsByDay[key] || [];
+              const isToday = key === todayKey;
+              return (
+                <div key={i} onClick={() => openNew(d)}
+                  style={{ minHeight: 76, border: `1.5px solid ${isToday ? C.accent : C.border}`, borderRadius: 8, padding: 4, cursor: "pointer", background: isToday ? `${C.accent}08` : "#fff", display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
+                  <span style={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isToday ? C.accent : C.text }}>{d}</span>
+                  {dayEvents.slice(0, 2).map(ev => {
+                    const t = EVENT_TYPES.find(t => t.id === ev.eventType) || EVENT_TYPES[4];
+                    return (
+                      <div key={ev.id} onClick={e => { e.stopPropagation(); openEdit(ev); }}
+                        title={ev.title}
+                        style={{ fontSize: 9.5, background: t.bg, color: t.color, borderRadius: 4, padding: "1px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
+                        {ev.eventTime ? ev.eventTime + " " : ""}{ev.title}
+                      </div>
+                    );
+                  })}
+                  {dayEvents.length > 2 && <div style={{ fontSize: 9, color: C.muted }}>+{dayEvents.length - 2} más</div>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+            {EVENT_TYPES.map(t => (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.muted }}>
+                <span style={{ width: 9, height: 9, borderRadius: 3, background: t.color }} /> {t.id}
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 14, display: "flex", alignItems: "center", gap: 7 }}>
+            <Bell size={15} color={C.warning} /> Próximos eventos
+          </h3>
+          {upcoming.length === 0 ? (
+            <p style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "16px 0" }}>Sin eventos próximos</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {upcoming.map(ev => {
+                const t = EVENT_TYPES.find(t => t.id === ev.eventType) || EVENT_TYPES[4];
+                const isToday = (ev.eventDate || "").slice(0, 10) === todayKey;
+                return (
+                  <div key={ev.id} onClick={() => openEdit(ev)}
+                    style={{ border: `1px solid ${C.border}`, borderLeft: `3px solid ${t.color}`, borderRadius: 8, padding: "9px 11px", cursor: "pointer" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{ev.title}</span>
+                      {isToday && <Badge color="warning">Hoy</Badge>}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                      {new Date(ev.eventDate + "T00:00:00").toLocaleDateString("es-EC", { day: "2-digit", month: "short" })}
+                      {ev.eventTime ? ` · ${ev.eventTime}` : ""} · {ev.eventType}
+                    </div>
+                    {ev.candidateName && <div style={{ fontSize: 11, color: C.accent, marginTop: 2 }}>👤 {ev.candidateName}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ marginTop: 14, padding: "10px 12px", background: C.infoL, borderRadius: 8, fontSize: 11.5, color: "#1E40AF", lineHeight: 1.5 }}>
+            💡 Estas alertas se muestran dentro del sistema. La sincronización con tu correo o agenda externa puede agregarse más adelante si lo necesitas.
+          </div>
+        </Card>
+      </div>
+
+      {modalOpen && (
+        <EventModal
+          event={editing}
+          prefillDate={prefillDate}
+          candidates={candidates}
+          onClose={() => setModalOpen(false)}
+          onSave={handleSave}
+          onDelete={editing ? () => handleDelete(editing.id) : null}
+        />
+      )}
+    </div>
+  );
+}
+
+function EventModal({ event, prefillDate, candidates, onClose, onSave, onDelete }) {
+  const [form, setForm] = useState(event ? {
+    title: event.title || "", eventType: event.eventType || "Entrevista", eventDate: (event.eventDate || "").slice(0, 10),
+    eventTime: event.eventTime || "", candidateId: event.candidateId || "", notes: event.notes || "", status: event.status || "Pendiente",
+  } : {
+    title: "", eventType: "Entrevista", eventDate: prefillDate, eventTime: "", candidateId: "", notes: "", status: "Pendiente",
+  });
+  const [saving, setSaving] = useState(false);
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const save = async () => {
+    if (!form.title.trim()) { alert("El título es requerido"); return; }
+    if (!form.eventDate) { alert("La fecha es requerida"); return; }
+    setSaving(true);
+    const cand = candidates.find(c => c.id === form.candidateId);
+    await onSave({
+      title: form.title, event_type: form.eventType, event_date: form.eventDate, event_time: form.eventTime || null,
+      candidate_id: form.candidateId || null, candidate_name: cand ? cand.name : null, notes: form.notes || null, status: form.status,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={event ? "Editar evento" : "Nuevo evento"}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Inp label="Título" required value={form.title} onChange={set("title")} placeholder="Ej: Entrevista con candidato..." />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Tipo</label>
+            <select value={form.eventType} onChange={set("eventType")} style={{ ...inputSt }}>
+              {EVENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.id}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Estado</label>
+            <select value={form.status} onChange={set("status")} style={{ ...inputSt }}>
+              <option>Pendiente</option><option>Completado</option><option>Cancelado</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Inp label="Fecha" type="date" required value={form.eventDate} onChange={set("eventDate")} />
+          <Inp label="Hora (opcional)" type="time" value={form.eventTime} onChange={set("eventTime")} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Candidato relacionado (opcional)</label>
+          <select value={form.candidateId} onChange={set("candidateId")} style={{ ...inputSt }}>
+            <option value="">— Ninguno —</option>
+            {candidates.map(c => <option key={c.id} value={c.id}>{c.name}{c.position ? ` · ${c.position}` : ""}</option>)}
+          </select>
+        </div>
+        <Inp label="Notas / detalle" rows={3} value={form.notes} onChange={set("notes")} placeholder="Detalles de la cita, dirección, link de videollamada, etc." />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
+          {onDelete ? <Btn variant="danger" size="sm" onClick={onDelete}><Trash2 size={14} /> Eliminar</Btn> : <div />}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+            <Btn onClick={save} disabled={saving}>{saving ? <><Spinner size={14} /> Guardando...</> : <><Check size={15} /> Guardar</>}</Btn>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════
    SETTINGS VIEW
 ═══════════════════════════════════════════════════════════ */
@@ -1844,14 +2216,16 @@ function SettingsView({ user, candidates, companies, formSubmissions }) {
 /* ═══════════════════════════════════════════════════════════
    ADMIN APP
 ═══════════════════════════════════════════════════════════ */
-function AdminApp({ user, view, setView, onLogout, candidates, companies, formSubmissions, consultations, setCandidates, refreshCandidates, refreshCompanies, refreshForms, refreshConsultations }) {
+function AdminApp({ user, view, setView, onLogout, candidates, companies, formSubmissions, consultations, positionRequests, surveys, events, setCandidates, refreshCandidates, refreshCompanies, refreshForms, refreshConsultations, refreshEvents }) {
   const views = {
     dashboard: <DashboardView candidates={candidates} companies={companies} formSubmissions={formSubmissions} setView={setView} />,
     candidates: <CandidatesView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     pipeline: <PipelineView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     forms: <FormsView formSubmissions={formSubmissions} refreshForms={refreshForms} />,
+    positionRequests: <PositionRequestsView positionRequests={positionRequests} />,
     companies: <CompaniesView companies={companies} refreshCompanies={refreshCompanies} />,
-    consultations: <ConsultationsView consultations={consultations} refreshConsultations={refreshConsultations} />,
+    feedback: <FeedbackView consultations={consultations} refreshConsultations={refreshConsultations} surveys={surveys} />,
+    calendar: <CalendarView events={events} refreshEvents={refreshEvents} candidates={candidates} />,
     settings: <SettingsView user={user} candidates={candidates} companies={companies} formSubmissions={formSubmissions} />,
   };
   return (
@@ -1896,6 +2270,351 @@ const Cb = ({ label, checked, onChange }) => (
    COMPANY FORM APP
    COMPANY FORM APP
 ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   CHAT WIDGET (flotante) — componente independiente para
+   reutilizar en todas las pantallas del portal de empresa
+═══════════════════════════════════════════════════════════ */
+function ChatWidget({ user, chatOpen, setChatOpen, chatMsg, setChatMsg, chatSending, chatSent, sendChat }) {
+  return (
+    <>
+      {/* ── BOTÓN FLOTANTE DE AYUDA (WhatsApp) ── */}
+      <button
+        onClick={() => { setChatOpen(o => !o); setChatSent(false); }}
+        title={chatOpen ? "Cerrar" : "¿Tienes dudas? Escríbenos"}
+        style={{ position: "fixed", bottom: 24, right: 24, width: 56, height: 56,
+          borderRadius: "50%", background: chatOpen ? C.primary : "#25D366",
+          border: "none", cursor: "pointer", display: "flex", alignItems: "center",
+          justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+          zIndex: 9999, transition: "all 0.2s" }}>
+        {chatOpen
+          ? <X size={26} color="#fff" />
+          : <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+            </svg>}
+      </button>
+
+      {/* ── PANEL DEL CHAT ── */}
+      {chatOpen && (
+        <div className="fade-in" style={{ position: "fixed", bottom: 92, right: 24,
+          width: 320, background: C.card, borderRadius: 16,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.2)", zIndex: 9998,
+          display: "flex", flexDirection: "column", overflow: "hidden",
+          border: `1px solid ${C.border}` }}>
+          {/* Encabezado */}
+          <div style={{ background: C.primary, padding: "14px 18px", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#25D366",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Norma Kuján · Consultoría</div>
+              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>¿Tienes dudas? Te ayudo 🙋‍♀️</div>
+            </div>
+          </div>
+
+          {/* Cuerpo */}
+          <div style={{ padding: "14px 14px 6px" }}>
+            <div style={{ background: "#F0F7FF", borderRadius: "4px 14px 14px 14px",
+              padding: "10px 14px", fontSize: 13, color: C.text, lineHeight: 1.65,
+              border: `1px solid ${C.border}`, marginBottom: 10 }}>
+              👋 Hola <strong>{user.companyName || user.name}</strong>, soy Norma. Si tienes alguna duda sobre el formulario o el proceso, escríbeme aquí y te respondo por WhatsApp.
+            </div>
+            {chatSent && (
+              <div style={{ background: "#DCFCE7", borderRadius: 10, padding: "9px 13px",
+                fontSize: 13, color: "#065F46", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                <Check size={14} style={{ flexShrink: 0 }} /> ¡Listo! Se abrió WhatsApp para enviarlo.
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div style={{ padding: "4px 12px 12px" }}>
+            <div style={{ display: "flex", gap: 6, background: C.bg,
+              borderRadius: 12, padding: "8px 10px", border: `1.5px solid ${C.border}` }}>
+              <textarea
+                value={chatMsg}
+                onChange={e => setChatMsg(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }}}
+                placeholder="Escribe tu consulta..."
+                rows={2}
+                style={{ flex: 1, border: "none", outline: "none", background: "transparent",
+                  fontSize: 13, color: C.text, resize: "none", fontFamily: "inherit", lineHeight: 1.5 }}
+              />
+              <button
+                onClick={sendChat}
+                disabled={chatSending || !chatMsg.trim()}
+                style={{ background: chatMsg.trim() ? "#25D366" : "#CBD5E1",
+                  border: "none", borderRadius: 8, padding: "6px 10px",
+                  cursor: chatMsg.trim() ? "pointer" : "not-allowed",
+                  display: "flex", alignItems: "center", alignSelf: "flex-end",
+                  transition: "background 0.2s" }}>
+                {chatSending
+                  ? <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff", borderRadius: "50%", animation: "bootspin .7s linear infinite" }} />
+                  : <Send size={16} color="#fff" />}
+              </button>
+            </div>
+            <p style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 5 }}>
+              Enter para enviar · Shift+Enter nueva línea
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMPANY HEADER (reutilizable en todas las pantallas del
+   portal de empresa)
+═══════════════════════════════════════════════════════════ */
+function CompanyHeader({ user, onLogout, onBack, companyLogo, onOpenLogoModal }) {
+  return (
+    <div style={{ background: C.primary, padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10, boxShadow: "0 2px 10px rgba(0,0,0,0.2)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <img src={LOGO_SRC} alt="Norma Kuján" style={{ height: 38, width: "auto", display: "block" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 9, borderLeft: "1px solid rgba(255,255,255,0.2)", paddingLeft: 12 }}>
+          <button onClick={onOpenLogoModal} title="Cambiar logo de tu empresa"
+            style={{ width: 30, height: 30, borderRadius: 8, overflow: "hidden", border: "1.5px dashed rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}>
+            {companyLogo
+              ? <img src={companyLogo} alt="logo empresa" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <Camera size={13} color="rgba(255,255,255,0.5)" />}
+          </button>
+          <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>{user.companyName || user.name}</span>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {onBack && (
+          <button onClick={onBack} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)", borderRadius: 8, padding: "7px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontFamily: "inherit" }}>
+            <ChevronLeft size={14} /> Menú
+          </button>
+        )}
+        <button onClick={onLogout} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)", borderRadius: 8, padding: "7px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontFamily: "inherit" }}>
+          <LogOut size={14} /> Cerrar sesión
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMPANY LANDING (pantalla de inicio con dos opciones)
+═══════════════════════════════════════════════════════════ */
+function CompanyLanding({ onSelectPositionRequest, onSelectProfileForm }) {
+  const OptionCard = ({ icon: Icon, title, desc, onClick, color }) => (
+    <button onClick={onClick} className="rp-btn"
+      style={{ background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 16, padding: "32px 26px",
+        textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: 14,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)", transition: "all 0.15s", fontFamily: "inherit" }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.1)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "translateY(0)"; }}>
+      <div style={{ width: 52, height: 52, borderRadius: 14, background: `${color}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Icon size={26} color={color} />
+      </div>
+      <div>
+        <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 6 }}>{title}</h3>
+        <p style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.6 }}>{desc}</p>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, color, fontSize: 13, fontWeight: 600, marginTop: 4 }}>
+        Continuar <ArrowRight size={14} />
+      </div>
+    </button>
+  );
+
+  return (
+    <div style={{ maxWidth: 820, margin: "0 auto", padding: "52px 20px 60px" }}>
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <h1 style={{ fontSize: 25, fontWeight: 700, color: C.text, marginBottom: 8 }}>¿Qué necesitas hacer hoy?</h1>
+        <p style={{ color: C.muted, fontSize: 14.5 }}>Selecciona una opción para continuar</p>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <OptionCard
+          icon={ClipboardList}
+          title="Tipo y número de posiciones requeridas"
+          desc="Indícanos qué cargo necesitas cubrir, cuántas personas, el rango salarial y la fecha estimada de inicio."
+          onClick={onSelectPositionRequest}
+          color={C.info}
+        />
+        <OptionCard
+          icon={FileText}
+          title="Perfil de posición/cargo nuevo"
+          desc="Completa el formulario detallado del manual de funciones del cargo (MAN-GTH-001)."
+          onClick={onSelectProfileForm}
+          color={C.accent}
+        />
+      </div>
+      <p style={{ fontSize: 11, color: C.muted, lineHeight: 1.7, textAlign: "center", maxWidth: 720, margin: "36px auto 0", padding: "0 8px" }}>
+        {SERVICE_DISCLAIMER}
+      </p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FORMULARIO: TIPO Y NÚMERO DE POSICIONES REQUERIDAS
+═══════════════════════════════════════════════════════════ */
+function PositionRequestForm({ user, onBack }) {
+  const [form, setForm] = useState({ position: "", quantity: "1", salaryRange: "", startDate: "" });
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const save = async () => {
+    if (!form.position.trim()) { alert("El nombre de la posición es requerido"); return; }
+    setSending(true);
+    await db.insert("position_requests", {
+      id: uid(), company_id: user.id, company_name: user.companyName || user.name,
+      position_name: form.position.trim(), quantity: parseInt(form.quantity) || 1,
+      salary_range: form.salaryRange.trim() || null, start_date: form.startDate || null,
+    });
+    setSending(false);
+    setDone(true);
+  };
+
+  if (done) return (
+    <div style={{ maxWidth: 520, margin: "60px auto", padding: "0 20px" }}>
+      <Card className="fade-in" style={{ textAlign: "center", padding: 44 }}>
+        <div style={{ width: 64, height: 64, background: C.successL, borderRadius: "50%", margin: "0 auto 18px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Check size={30} color={C.success} />
+        </div>
+        <h2 style={{ color: C.text, marginBottom: 8, fontSize: 19 }}>¡Solicitud enviada!</h2>
+        <p style={{ color: C.muted, marginBottom: 24, lineHeight: 1.6, fontSize: 14 }}>
+          Registramos tu solicitud para <strong>{form.position}</strong>. La consultora la revisará a la brevedad.
+        </p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <Btn variant="secondary" onClick={() => { setDone(false); setForm({ position: "", quantity: "1", salaryRange: "", startDate: "" }); }}>Agregar otra posición</Btn>
+          <Btn onClick={onBack}>Volver al menú</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 20px 60px" }}>
+      <div style={{ textAlign: "center", marginBottom: 28 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 6 }}>Tipo y número de posiciones requeridas</h1>
+        <p style={{ color: C.muted, fontSize: 13.5 }}>Cuéntanos qué necesitas para empezar la búsqueda</p>
+      </div>
+      <Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Inp label="Nombre de la posición / cargo requerido" required value={form.position} onChange={set("position")} placeholder="Ej: Asesor comercial" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <Inp label="Número de personas requeridas" type="number" value={form.quantity} onChange={set("quantity")} placeholder="1" />
+            <Inp label="Fecha tentativa de inicio" type="date" value={form.startDate} onChange={set("startDate")} />
+          </div>
+          <Inp label="Rango salarial presupuestado" value={form.salaryRange} onChange={set("salaryRange")} placeholder="Ej: $800 - $1,200" />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+            <Btn variant="secondary" onClick={onBack}>Cancelar</Btn>
+            <Btn onClick={save} disabled={sending}>{sending ? <><Spinner size={14} /> Guardando...</> : <><Check size={15} /> Guardar</>}</Btn>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ENCUESTA DE SATISFACCIÓN (post-envío del formulario de cargo)
+═══════════════════════════════════════════════════════════ */
+function StarRating({ value, onChange, size = 30 }) {
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} type="button" onClick={() => onChange(n)}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, lineHeight: 0 }}>
+          <svg width={size} height={size} viewBox="0 0 24 24"
+            fill={n <= value ? "#F59E0B" : "none"} stroke={n <= value ? "#F59E0B" : "#CBD5E1"} strokeWidth="1.5">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SurveyScreen({ onSubmitSurvey, sending }) {
+  const [q1, setQ1] = useState(0);
+  const [q2, setQ2] = useState(0);
+  const [q3, setQ3] = useState(0);
+  const [comment, setComment] = useState("");
+  const canSubmit = q1 > 0 && q2 > 0 && q3 > 0;
+
+  const Question = ({ label, value, onChange }) => (
+    <div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 10 }}>{label}</div>
+      <StarRating value={value} onChange={onChange} />
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 560, margin: "0 auto", padding: "48px 20px 60px" }}>
+      <Card className="fade-in" style={{ padding: 40 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: 38, marginBottom: 10 }}>🙌</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }}>¡Gracias por enviar el formulario!</h2>
+          <p style={{ color: C.muted, fontSize: 13.5, lineHeight: 1.6 }}>Antes de terminar, ¿nos ayudas con 3 preguntas rápidas sobre tu experiencia?</p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <Question label="¿Qué tan fácil fue completar este formulario?" value={q1} onChange={setQ1} />
+          <Question label="¿Qué tan satisfecho/a estás con nuestro proceso hasta ahora?" value={q2} onChange={setQ2} />
+          <Question label="¿Qué tan probable es que nos recomiendes a otra empresa?" value={q3} onChange={setQ3} />
+          <Inp label="Comentario (opcional)" rows={2} value={comment} onChange={e => setComment(e.target.value)} placeholder="Cuéntanos algo más si lo deseas..." />
+        </div>
+        <Btn fullWidth onClick={() => onSubmitSurvey({ q1, q2, q3, comment })} disabled={!canSubmit || sending} style={{ marginTop: 26 }}>
+          {sending ? <><Spinner size={15} /> Enviando...</> : "Enviar valoración"}
+        </Btn>
+        <button onClick={() => onSubmitSurvey(null)} disabled={sending}
+          style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: C.muted, fontSize: 12.5, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit" }}>
+          Omitir por ahora
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGO DE LA EMPRESA (modal de carga)
+═══════════════════════════════════════════════════════════ */
+function LogoUploadModal({ open, onClose, currentLogo, onSave }) {
+  const [preview, setPreview] = useState(currentLogo);
+  const [saving, setSaving] = useState(false);
+  const fRef = useRef();
+
+  const handleFile = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 800 * 1024) { alert("La imagen debe ser menor a 800 KB"); return; }
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    await onSave(preview);
+    setSaving(false);
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Logo de tu empresa" width={400}>
+      <div style={{ textAlign: "center" }}>
+        <div onClick={() => fRef.current.click()}
+          style={{ width: 120, height: 120, borderRadius: 16, margin: "0 auto 16px", border: `2px dashed ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden", background: C.bg }}>
+          {preview ? <img src={preview} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Camera size={28} color={C.muted} />}
+        </div>
+        <input ref={fRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+        <Btn variant="secondary" size="sm" onClick={() => fRef.current.click()}>Seleccionar imagen</Btn>
+        <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>PNG o JPG · máx. 800 KB</p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 22 }}>
+          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={save} disabled={saving}>{saving ? <><Spinner size={14} /> Guardando...</> : <><Check size={15} /> Guardar logo</>}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function CompanyApp({ user, onLogout, onSubmit }) {
   const EMPTY = { tituloPuesto: "", area: "", nivelJerarquico: "", departamento: "", informaJerarquico: "", informaFuncional: "", relacionesExternas: "", relacionesInternas: "", posicionEstructural: "", misionCargo: "", responsabilidades: "", autoridades: "", educacion: { maestria: false, titulo3: false, estudiante: false, tecnologo: false, bachiller: false, primaria: false, educacionEn: "" }, experiencia: { sinExp: false, exp12: false, exp35: false, exp5: false, expEn: "" }, formacion: { cert1: "", cert2: "" }, requerimientos: { req1: "", req2: "", req3: "" }, lugarTrabajo: { teletrabajo: "", oficina: "", obras: "", bodegas: "" }, herramientas: { extTelefonica: false, correoInterno: false, llamadasExt: false, compEscritorio: false, uniforme: false, compPortatil: false, credencial: false, celular: false, epp: false, radio: false, vehiculo: false } };
   const [form, setForm] = useState(EMPTY);
@@ -1906,6 +2625,34 @@ function CompanyApp({ user, onLogout, onSubmit }) {
   const [chatMsg, setChatMsg] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [chatSent, setChatSent] = useState(false);
+
+  // Navegación interna del portal de empresa
+  const [companyView, setCompanyView] = useState("landing"); // landing | positionRequest | profileForm
+  const goToLanding = () => setCompanyView("landing");
+
+  // Logo de la empresa
+  const [companyLogo, setCompanyLogo] = useState(user.logoUrl || null);
+  const [logoModalOpen, setLogoModalOpen] = useState(false);
+  const handleLogoSave = async dataUri => {
+    await db.update("users", user.id, { logo_url: dataUri });
+    setCompanyLogo(dataUri);
+    setLogoModalOpen(false);
+  };
+
+  // Encuesta de satisfacción (post-envío del formulario de cargo)
+  const [surveyDone, setSurveyDone] = useState(false);
+  const [surveySending, setSurveySending] = useState(false);
+  const handleSurveySubmit = async data => {
+    setSurveySending(true);
+    if (data) {
+      await db.insert("satisfaction_surveys", {
+        id: uid(), company_id: user.id, company_name: user.companyName || user.name,
+        q1_facilidad: data.q1, q2_satisfaccion: data.q2, q3_recomendaria: data.q3, comentario: data.comment || null,
+      });
+    }
+    setSurveySending(false);
+    setSurveyDone(true);
+  };
 
   const sendChat = async () => {
     if (!chatMsg.trim()) return;
@@ -1944,28 +2691,54 @@ _(enviado desde ReclutaPlus)_`
   };
   const lugarTotal = Object.values(form.lugarTrabajo).reduce((a, v) => a + (parseInt(v) || 0), 0);
 
-  if (submitted) return (
+  // Después de enviar el formulario de cargo: primero la encuesta, luego el agradecimiento final
+  if (submitted && !surveyDone) return (
+    <div style={{ minHeight: "100vh", background: C.bg }}>
+      <CompanyHeader user={user} onLogout={onLogout} onBack={null} companyLogo={companyLogo} onOpenLogoModal={() => setLogoModalOpen(true)} />
+      <SurveyScreen onSubmitSurvey={handleSurveySubmit} sending={surveySending} />
+      <ChatWidget user={user} chatOpen={chatOpen} setChatOpen={setChatOpen} chatMsg={chatMsg} setChatMsg={setChatMsg} chatSending={chatSending} chatSent={chatSent} sendChat={sendChat} />
+      {logoModalOpen && <LogoUploadModal open={logoModalOpen} onClose={() => setLogoModalOpen(false)} currentLogo={companyLogo} onSave={handleLogoSave} />}
+    </div>
+  );
+
+  if (submitted && surveyDone) return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <Card className="fade-in" style={{ maxWidth: 480, textAlign: "center", padding: 52 }}>
         <div style={{ width: 72, height: 72, background: C.successL, borderRadius: "50%", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={36} color={C.success} /></div>
         <h2 style={{ color: C.text, marginBottom: 10 }}>¡Formulario enviado!</h2>
         <p style={{ color: C.muted, marginBottom: 24, lineHeight: 1.6 }}>Tu solicitud fue recibida exitosamente. La consultora se comunicará contigo a la brevedad.</p>
-        <Btn variant="secondary" onClick={() => { setSubmitted(false); setForm(EMPTY); }}>Enviar otro formulario</Btn>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <Btn variant="secondary" onClick={() => { setSubmitted(false); setSurveyDone(false); setForm(EMPTY); }}>Enviar otro formulario</Btn>
+          <Btn onClick={() => { setSubmitted(false); setSurveyDone(false); setForm(EMPTY); goToLanding(); }}>Volver al menú</Btn>
+        </div>
       </Card>
+      <ChatWidget user={user} chatOpen={chatOpen} setChatOpen={setChatOpen} chatMsg={chatMsg} setChatMsg={setChatMsg} chatSending={chatSending} chatSent={chatSent} sendChat={sendChat} />
+    </div>
+  );
+
+  // Pantalla de inicio: dos grandes opciones
+  if (companyView === "landing") return (
+    <div style={{ minHeight: "100vh", background: C.bg }}>
+      <CompanyHeader user={user} onLogout={onLogout} onBack={null} companyLogo={companyLogo} onOpenLogoModal={() => setLogoModalOpen(true)} />
+      <CompanyLanding onSelectPositionRequest={() => setCompanyView("positionRequest")} onSelectProfileForm={() => setCompanyView("profileForm")} />
+      <ChatWidget user={user} chatOpen={chatOpen} setChatOpen={setChatOpen} chatMsg={chatMsg} setChatMsg={setChatMsg} chatSending={chatSending} chatSent={chatSent} sendChat={sendChat} />
+      {logoModalOpen && <LogoUploadModal open={logoModalOpen} onClose={() => setLogoModalOpen(false)} currentLogo={companyLogo} onSave={handleLogoSave} />}
+    </div>
+  );
+
+  // Pantalla: tipo y número de posiciones requeridas
+  if (companyView === "positionRequest") return (
+    <div style={{ minHeight: "100vh", background: C.bg }}>
+      <CompanyHeader user={user} onLogout={onLogout} onBack={goToLanding} companyLogo={companyLogo} onOpenLogoModal={() => setLogoModalOpen(true)} />
+      <PositionRequestForm user={user} onBack={goToLanding} />
+      <ChatWidget user={user} chatOpen={chatOpen} setChatOpen={setChatOpen} chatMsg={chatMsg} setChatMsg={setChatMsg} chatSending={chatSending} chatSent={chatSent} sendChat={sendChat} />
+      {logoModalOpen && <LogoUploadModal open={logoModalOpen} onClose={() => setLogoModalOpen(false)} currentLogo={companyLogo} onSave={handleLogoSave} />}
     </div>
   );
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
-      <div style={{ background: C.primary, padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10, boxShadow: "0 2px 10px rgba(0,0,0,0.2)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img src={LOGO_SRC} alt="Norma Kuján" style={{ height: 38, width: "auto", display: "block" }} />
-          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, borderLeft: "1px solid rgba(255,255,255,0.2)", paddingLeft: 12 }}>{user.companyName || user.name}</div>
-        </div>
-        <button onClick={onLogout} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.8)", borderRadius: 8, padding: "7px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontFamily: "inherit" }}>
-          <LogOut size={14} /> Cerrar sesión
-        </button>
-      </div>
+      <CompanyHeader user={user} onLogout={onLogout} onBack={companyView !== "landing" ? () => goToLanding() : null} companyLogo={companyLogo} onOpenLogoModal={() => setLogoModalOpen(true)} />
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ display: "inline-block", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 8, padding: "4px 16px", fontSize: 12, color: C.muted, marginBottom: 14 }}>Código: MAN-GTH-001 · Versión 01 · Fecha: {new Date().toLocaleDateString("es-EC")}</div>
@@ -2082,90 +2855,8 @@ _(enviado desde ReclutaPlus)_`
         </div>
       </div>
 
-      {/* ── BOTÓN FLOTANTE DE AYUDA (WhatsApp) ── */}
-      <button
-        onClick={() => { setChatOpen(o => !o); setChatSent(false); }}
-        title={chatOpen ? "Cerrar" : "¿Tienes dudas? Escríbenos"}
-        style={{ position: "fixed", bottom: 24, right: 24, width: 56, height: 56,
-          borderRadius: "50%", background: chatOpen ? C.primary : "#25D366",
-          border: "none", cursor: "pointer", display: "flex", alignItems: "center",
-          justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-          zIndex: 9999, transition: "all 0.2s" }}>
-        {chatOpen
-          ? <X size={26} color="#fff" />
-          : <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-            </svg>}
-      </button>
-
-      {/* ── PANEL DEL CHAT ── */}
-      {chatOpen && (
-        <div className="fade-in" style={{ position: "fixed", bottom: 92, right: 24,
-          width: 320, background: C.card, borderRadius: 16,
-          boxShadow: "0 8px 40px rgba(0,0,0,0.2)", zIndex: 9998,
-          display: "flex", flexDirection: "column", overflow: "hidden",
-          border: `1px solid ${C.border}` }}>
-          {/* Encabezado */}
-          <div style={{ background: C.primary, padding: "14px 18px", display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#25D366",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-              </svg>
-            </div>
-            <div>
-              <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Norma Kuján · Consultoría</div>
-              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>¿Tienes dudas? Te ayudo 🙋‍♀️</div>
-            </div>
-          </div>
-
-          {/* Cuerpo */}
-          <div style={{ padding: "14px 14px 6px" }}>
-            <div style={{ background: "#F0F7FF", borderRadius: "4px 14px 14px 14px",
-              padding: "10px 14px", fontSize: 13, color: C.text, lineHeight: 1.65,
-              border: `1px solid ${C.border}`, marginBottom: 10 }}>
-              👋 Hola <strong>{user.companyName || user.name}</strong>, soy Norma. Si tienes alguna duda sobre el formulario o el proceso, escríbeme aquí y te respondo por WhatsApp.
-            </div>
-            {chatSent && (
-              <div style={{ background: "#DCFCE7", borderRadius: 10, padding: "9px 13px",
-                fontSize: 13, color: "#065F46", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                <Check size={14} style={{ flexShrink: 0 }} /> ¡Listo! Se abrió WhatsApp para enviarlo.
-              </div>
-            )}
-          </div>
-
-          {/* Input */}
-          <div style={{ padding: "4px 12px 12px" }}>
-            <div style={{ display: "flex", gap: 6, background: C.bg,
-              borderRadius: 12, padding: "8px 10px", border: `1.5px solid ${C.border}` }}>
-              <textarea
-                value={chatMsg}
-                onChange={e => setChatMsg(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }}}
-                placeholder="Escribe tu consulta..."
-                rows={2}
-                style={{ flex: 1, border: "none", outline: "none", background: "transparent",
-                  fontSize: 13, color: C.text, resize: "none", fontFamily: "inherit", lineHeight: 1.5 }}
-              />
-              <button
-                onClick={sendChat}
-                disabled={chatSending || !chatMsg.trim()}
-                style={{ background: chatMsg.trim() ? "#25D366" : "#CBD5E1",
-                  border: "none", borderRadius: 8, padding: "6px 10px",
-                  cursor: chatMsg.trim() ? "pointer" : "not-allowed",
-                  display: "flex", alignItems: "center", alignSelf: "flex-end",
-                  transition: "background 0.2s" }}>
-                {chatSending
-                  ? <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff", borderRadius: "50%", animation: "bootspin .7s linear infinite" }} />
-                  : <Send size={16} color="#fff" />}
-              </button>
-            </div>
-            <p style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 5 }}>
-              Enter para enviar · Shift+Enter nueva línea
-            </p>
-          </div>
-        </div>
-      )}
+      <ChatWidget user={user} chatOpen={chatOpen} setChatOpen={setChatOpen} chatMsg={chatMsg} setChatMsg={setChatMsg} chatSending={chatSending} chatSent={chatSent} sendChat={sendChat} />
+      {logoModalOpen && <LogoUploadModal open={logoModalOpen} onClose={() => setLogoModalOpen(false)} currentLogo={companyLogo} onSave={handleLogoSave} />}
 
     </div>
   );
@@ -2257,6 +2948,9 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [formSubmissions, setFormSubmissions] = useState([]);
   const [consultations, setConsultations] = useState([]);
+  const [positionRequests, setPositionRequests] = useState([]);
+  const [surveys, setSurveys] = useState([]);
+  const [events, setEvents] = useState([]);
 
   const refreshCandidates = async () => {
     const data = await db.get("candidates", "order=created_at.desc");
@@ -2274,10 +2968,22 @@ function App() {
     const data = await db.getConsultations();
     setConsultations(data.map(mapConsultation));
   };
+  const refreshPositionRequests = async () => {
+    const data = await db.get("position_requests", "order=created_at.desc");
+    setPositionRequests(data.map(mapPositionRequest));
+  };
+  const refreshSurveys = async () => {
+    const data = await db.get("satisfaction_surveys", "order=created_at.desc");
+    setSurveys(data.map(mapSurvey));
+  };
+  const refreshEvents = async () => {
+    const data = await db.get("calendar_events", "order=event_date.asc");
+    setEvents(data.map(mapEvent));
+  };
 
   useEffect(() => {
     (async () => {
-      await Promise.all([refreshCandidates(), refreshCompanies(), refreshForms(), refreshConsultations()]);
+      await Promise.all([refreshCandidates(), refreshCompanies(), refreshForms(), refreshConsultations(), refreshPositionRequests(), refreshSurveys(), refreshEvents()]);
       setLoading(false);
     })();
   }, []);
@@ -2326,12 +3032,13 @@ function App() {
       <AdminApp
         user={user} view={view} setView={setView} onLogout={handleLogout}
         candidates={candidates} companies={companies} formSubmissions={formSubmissions}
-        consultations={consultations}
+        consultations={consultations} positionRequests={positionRequests} surveys={surveys} events={events}
         setCandidates={setCandidates}
         refreshCandidates={refreshCandidates}
         refreshCompanies={refreshCompanies}
         refreshForms={refreshForms}
         refreshConsultations={refreshConsultations}
+        refreshEvents={refreshEvents}
       />
     </>
   );
