@@ -1894,8 +1894,8 @@ function FeedbackView({ consultations, refreshConsultations, surveys }) {
 /* ═══════════════════════════════════════════════════════════
    POSITION REQUESTS VIEW (admin)
 ═══════════════════════════════════════════════════════════ */
-function PositionRequestsView({ positionRequests: initialData }) {
-  const [data, setData] = useState(initialData || []);
+function PositionRequestsView() {
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = async () => {
@@ -1965,14 +1965,20 @@ function PositionRequestsView({ positionRequests: initialData }) {
 /* ═══════════════════════════════════════════════════════════
    CALENDARIO Y ALERTAS (admin)
 ═══════════════════════════════════════════════════════════ */
-function CalendarView({ events, refreshEvents, candidates }) {
+function CalendarView({ candidates }) {
+  const [events, setEvents] = useState([]);
   const [cursor, setCursor] = useState(new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [prefillDate, setPrefillDate] = useState(null);
 
-  // Fetch fresh events every time this view mounts
-  useEffect(() => { refreshEvents(); }, []);
+  const loadEvents = async () => {
+    const data = await db.get("calendar_events", "order=event_date.asc");
+    if (data) setEvents(data.map(mapEvent));
+  };
+
+  // Fetch every time this view renders (mounts)
+  useEffect(() => { loadEvents(); }, []);
 
   const year = cursor.getFullYear(), month = cursor.getMonth();
   const firstDay = new Date(year, month, 1);
@@ -2002,18 +2008,18 @@ function CalendarView({ events, refreshEvents, candidates }) {
   const handleSave = async data => {
     if (editing) {
       const ok = await db.update("calendar_events", editing.id, data);
-      if (ok === false) { alert("Error al actualizar el evento. Verifica que la tabla exista en Supabase."); return; }
+      if (ok === false) { alert("Error al actualizar. Intenta de nuevo."); return; }
     } else {
       const res = await db.insert("calendar_events", { id: uid(), ...data });
-      if (!res) { alert("Error al guardar el evento. ¿Ejecutaste el SQL en Supabase?"); return; }
+      if (!res) { alert("Error al guardar el evento. Intenta de nuevo."); return; }
     }
-    await refreshEvents();
+    await loadEvents();
     setModalOpen(false);
   };
   const handleDelete = async id => {
     if (!confirm("¿Eliminar este evento?")) return;
     await db.del("calendar_events", id);
-    await refreshEvents();
+    await loadEvents();
     setModalOpen(false);
   };
 
@@ -2251,10 +2257,10 @@ function AdminApp({ user, view, setView, onLogout, candidates, companies, formSu
     candidates: <CandidatesView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     pipeline: <PipelineView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     forms: <FormsView formSubmissions={formSubmissions} refreshForms={refreshForms} />,
-    positionRequests: <PositionRequestsView positionRequests={positionRequests} />,
+    positionRequests: <PositionRequestsView />,
     companies: <CompaniesView companies={companies} refreshCompanies={refreshCompanies} />,
     feedback: <FeedbackView consultations={consultations} refreshConsultations={refreshConsultations} surveys={surveys} />,
-    calendar: <CalendarView events={events} refreshEvents={refreshEvents} candidates={candidates} />,
+    calendar: <CalendarView candidates={candidates} />,
     settings: <SettingsView user={user} candidates={candidates} companies={companies} formSubmissions={formSubmissions} />,
   };
   return (
@@ -2970,7 +2976,12 @@ td,th{border:1px solid #1E3A5F;padding:5px 8px;vertical-align:top;font-size:10.5
    ROOT APP
 ═══════════════════════════════════════════════════════════ */
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const s = localStorage.getItem("rp_session");
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  });
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("dashboard");
   const [candidates, setCandidates] = useState([]);
@@ -3023,11 +3034,16 @@ function App() {
     const u = mapUser(users[0]);
     if (u.active === false) { alert("Esta cuenta está desactivada. Contacta a la consultora."); return false; }
     setUser(u);
+    localStorage.setItem("rp_session", JSON.stringify(u));
     setView(u.role === "company" ? "company-form" : "dashboard");
     return true;
   };
 
-  const handleLogout = () => { setUser(null); setView("dashboard"); };
+  const handleLogout = () => {
+    setUser(null);
+    setView("dashboard");
+    localStorage.removeItem("rp_session");
+  };
 
   if (loading) return (
     <>
