@@ -351,10 +351,11 @@ const db = {
   },
   async insert(table, data) {
     try {
-      const r = await fetch(`${SB_URL}/rest/v1/${table}`, { method: "POST", headers: H, body: JSON.stringify(data) });
-      if (!r.ok) { console.error(await r.text()); return null; }
-      const res = await r.json();
-      return Array.isArray(res) ? res[0] : res;
+      // Use return=minimal to get a simple 201/204 with no body — avoids JSON parse issues
+      const headers = { ...H, "Prefer": "return=minimal" };
+      const r = await fetch(`${SB_URL}/rest/v1/${table}`, { method: "POST", headers, body: JSON.stringify(data) });
+      if (!r.ok) { console.error(table, await r.text().catch(() => "?")); return null; }
+      return true;
     } catch (e) { console.error(e); return null; }
   },
   async update(table, id, data) {
@@ -2498,12 +2499,16 @@ function PositionRequestForm({ user, onBack }) {
   const save = async () => {
     if (!form.position.trim()) { alert("El nombre de la posición es requerido"); return; }
     setSending(true);
-    await db.insert("position_requests", {
+    const ok = await db.insert("position_requests", {
       id: uid(), company_id: user.id, company_name: user.companyName || user.name,
       position_name: form.position.trim(), quantity: parseInt(form.quantity) || 1,
       salary_range: form.salaryRange.trim() || null, start_date: form.startDate || null,
     });
     setSending(false);
+    if (!ok) {
+      alert("No se pudo guardar la solicitud. Verifica tu conexión e intenta de nuevo.");
+      return;
+    }
     setDone(true);
   };
 
@@ -2680,10 +2685,11 @@ function CompanyApp({ user, onLogout, onSubmit }) {
   const handleSurveySubmit = async data => {
     setSurveySending(true);
     if (data) {
-      await db.insert("satisfaction_surveys", {
+      const surveyOk = await db.insert("satisfaction_surveys", {
         id: uid(), company_id: user.id, company_name: user.companyName || user.name,
         q1_facilidad: data.q1, q2_satisfaccion: data.q2, q3_recomendaria: data.q3, comentario: data.comment || null,
       });
+      if (!surveyOk) console.warn("Survey insert failed silently");
     }
     setSurveySending(false);
     setSurveyDone(true);
