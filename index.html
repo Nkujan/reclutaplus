@@ -351,12 +351,21 @@ const db = {
   },
   async insert(table, data) {
     try {
-      // Use return=minimal to get a simple 201/204 with no body — avoids JSON parse issues
       const headers = { ...H, "Prefer": "return=minimal" };
       const r = await fetch(`${SB_URL}/rest/v1/${table}`, { method: "POST", headers, body: JSON.stringify(data) });
-      if (!r.ok) { console.error(table, await r.text().catch(() => "?")); return null; }
+      if (!r.ok) {
+        const errText = await r.text().catch(() => "sin detalle");
+        console.error("Insert failed:", table, r.status, errText);
+        // Store last error for debugging
+        window._lastDbError = `[${table}] HTTP ${r.status}: ${errText}`;
+        return null;
+      }
       return true;
-    } catch (e) { console.error(e); return null; }
+    } catch (e) {
+      console.error("Insert exception:", e);
+      window._lastDbError = `[${table}] Exception: ${e.message}`;
+      return null;
+    }
   },
   async update(table, id, data) {
     try {
@@ -2012,7 +2021,11 @@ function CalendarView({ candidates }) {
       if (ok === false) { alert("Error al actualizar. Intenta de nuevo."); return; }
     } else {
       const res = await db.insert("calendar_events", { id: uid(), ...data });
-      if (!res) { alert("Error al guardar el evento. Intenta de nuevo."); return; }
+      if (!res) {
+        const detail = window._lastDbError || "sin detalle";
+        alert("Error al guardar el evento.\n\nDetalle técnico:\n" + detail + "\n\nCopia este mensaje y envíalo a tu consultor.");
+        return;
+      }
     }
     await loadEvents();
     setModalOpen(false);
@@ -2506,7 +2519,8 @@ function PositionRequestForm({ user, onBack }) {
     });
     setSending(false);
     if (!ok) {
-      alert("No se pudo guardar la solicitud. Verifica tu conexión e intenta de nuevo.");
+      const detail = window._lastDbError || "sin detalle";
+      alert("No se pudo guardar la solicitud.\n\nDetalle técnico:\n" + detail + "\n\nCopia este mensaje y envíalo a Norma Kuján.");
       return;
     }
     setDone(true);
