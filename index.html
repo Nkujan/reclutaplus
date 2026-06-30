@@ -1894,15 +1894,36 @@ function FeedbackView({ consultations, refreshConsultations, surveys }) {
 /* ═══════════════════════════════════════════════════════════
    POSITION REQUESTS VIEW (admin)
 ═══════════════════════════════════════════════════════════ */
-function PositionRequestsView({ positionRequests }) {
-  const sorted = [...positionRequests].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+function PositionRequestsView({ positionRequests: initialData }) {
+  const [data, setData] = useState(initialData || []);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = async () => {
+    setLoading(true);
+    const res = await db.get("position_requests", "order=created_at.desc");
+    setData(res.map(mapPositionRequest));
+    setLoading(false);
+  };
+
+  // Always fetch fresh data when this view mounts
+  useEffect(() => { refresh(); }, []);
+
+  const sorted = [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
   return (
     <div className="fade-in">
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Posiciones requeridas</h1>
-        <p style={{ color: C.muted, fontSize: 14 }}>Solicitudes de personal enviadas por tus empresas clientes · {positionRequests.length} recibidas</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Posiciones requeridas</h1>
+          <p style={{ color: C.muted, fontSize: 14 }}>Solicitudes de personal enviadas por tus empresas clientes · {data.length} recibidas</p>
+        </div>
+        <Btn variant="secondary" onClick={refresh} disabled={loading}>
+          {loading ? <><Spinner size={14}/> Actualizando...</> : <><RefreshCw size={14}/> Actualizar</>}
+        </Btn>
       </div>
-      {positionRequests.length === 0 ? (
+      {loading ? (
+        <Card style={{ textAlign: "center", padding: 48 }}><Spinner size={32}/><p style={{ color: C.muted, marginTop: 14, fontSize: 14 }}>Cargando solicitudes...</p></Card>
+      ) : sorted.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 56 }}>
           <ClipboardList size={52} color={C.border} style={{ display: "block", margin: "0 auto 16px" }} />
           <h3 style={{ color: C.text, marginBottom: 8 }}>Sin solicitudes aún</h3>
@@ -1950,6 +1971,9 @@ function CalendarView({ events, refreshEvents, candidates }) {
   const [editing, setEditing] = useState(null);
   const [prefillDate, setPrefillDate] = useState(null);
 
+  // Fetch fresh events every time this view mounts
+  useEffect(() => { refreshEvents(); }, []);
+
   const year = cursor.getFullYear(), month = cursor.getMonth();
   const firstDay = new Date(year, month, 1);
   const startWeekday = firstDay.getDay();
@@ -1976,8 +2000,13 @@ function CalendarView({ events, refreshEvents, candidates }) {
   const openEdit = ev => { setEditing(ev); setModalOpen(true); };
 
   const handleSave = async data => {
-    if (editing) await db.update("calendar_events", editing.id, data);
-    else await db.insert("calendar_events", { id: uid(), ...data });
+    if (editing) {
+      const ok = await db.update("calendar_events", editing.id, data);
+      if (ok === false) { alert("Error al actualizar el evento. Verifica que la tabla exista en Supabase."); return; }
+    } else {
+      const res = await db.insert("calendar_events", { id: uid(), ...data });
+      if (!res) { alert("Error al guardar el evento. ¿Ejecutaste el SQL en Supabase?"); return; }
+    }
     await refreshEvents();
     setModalOpen(false);
   };
