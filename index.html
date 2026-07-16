@@ -421,6 +421,12 @@ const EVENT_TYPES = [
   { id: "Otro", color: "#64748B", bg: "#F1F5F9" },
 ];
 
+const PRIORITY_LEVELS = [
+  { id: "Alta",  color: "#DC2626", bg: "#FEE2E2", icon: "🔴", notifyAt: [60, 30, 15, 5]  },
+  { id: "Media", color: "#D97706", bg: "#FEF3C7", icon: "🟡", notifyAt: [30, 15]          },
+  { id: "Baja",  color: "#059669", bg: "#DCFCE7", icon: "🟢", notifyAt: [15]              },
+];
+
 const SERVICE_DISCLAIMER = "Toda la información recopilada y tratada durante el proceso de selección será gestionada con estricta confidencialidad y en cumplimiento de la normativa vigente en materia de protección de datos personales, aplicando las medidas técnicas, organizativas y de seguridad necesarias para garantizar su integridad, disponibilidad y resguardo. Asimismo, la consultora garantiza la idoneidad del proceso de reclutamiento y selección ejecutado; por ello, en caso de que el candidato contratado se desvincule voluntariamente o sea separado de la organización por causas atribuibles a su desempeño dentro de los primeros tres (3) meses de contratación, la consultora realizará un nuevo proceso de búsqueda, evaluación y selección para la misma posición, asumiendo íntegramente los costos asociados a dicho reemplazo.";
 
 /* ═══════════════════════════════════════════════════════════
@@ -432,7 +438,7 @@ const mapForm = r => ({ id: r.id, companyId: r.company_id, companyName: r.compan
 const mapConsultation = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, message: r.message, read: r.read, createdAt: r.created_at });
 const mapPositionRequest = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, positionName: r.position_name, quantity: r.quantity, salaryRange: r.salary_range, startDate: r.start_date, createdAt: r.created_at });
 const mapSurvey = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, q1: r.q1_facilidad, q2: r.q2_satisfaccion, q3: r.q3_recomendaria, comment: r.comentario, createdAt: r.created_at });
-const mapEvent = r => ({ id: r.id, title: r.title, eventType: r.event_type, eventDate: r.event_date, eventTime: r.event_time, candidateId: r.candidate_id, candidateName: r.candidate_name, companyName: r.company_name, notes: r.notes, status: r.status, createdAt: r.created_at });
+const mapEvent = r => ({ id: r.id, title: r.title, eventType: r.event_type, eventDate: r.event_date, eventTime: r.event_time, candidateId: r.candidate_id, candidateName: r.candidate_name, companyName: r.company_name, notes: r.notes, status: r.status, meetingUrl: r.meeting_url || null, priority: r.priority || "Media", createdAt: r.created_at });
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const fmtDate = d => d ? new Date(d).toLocaleDateString("es-EC") : "-";
@@ -1982,13 +1988,54 @@ function CalendarView({ candidates }) {
   const [editing, setEditing] = useState(null);
   const [prefillDate, setPrefillDate] = useState(null);
 
+  const notifiedRef = useRef(new Set()); // track which reminders were already shown
+
   const loadEvents = async () => {
     const data = await db.get("calendar_events", "order=event_date.asc");
     if (data) setEvents(data.map(mapEvent));
   };
 
-  // Fetch every time this view renders (mounts)
+  // Fetch on mount
   useEffect(() => { loadEvents(); }, []);
+
+  // Request notification permission once
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Check for upcoming event reminders every 60 seconds
+  useEffect(() => {
+    const check = () => {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const now = new Date();
+      events.forEach(ev => {
+        if (!ev.eventDate || !ev.eventTime || ev.status === "Cancelado" || ev.status === "Completado") return;
+        const evDt = new Date(ev.eventDate + "T" + ev.eventTime);
+        const diffMin = (evDt - now) / 60000;
+        const pl = PRIORITY_LEVELS.find(p => p.id === ev.priority) || PRIORITY_LEVELS[1];
+        pl.notifyAt.forEach(t => {
+          const key = ev.id + "-" + t;
+          if (!notifiedRef.current.has(key) && diffMin > 0 && diffMin <= t + 0.5 && diffMin >= t - 0.5) {
+            notifiedRef.current.add(key);
+            const n = new Notification(pl.icon + " " + ev.title, {
+              body: "En " + t + " minuto" + (t !== 1 ? "s" : "") + " · " + ev.eventTime +
+                    (ev.candidateName ? " · " + ev.candidateName : "") +
+                    (ev.meetingUrl ? "
+📹 " + ev.meetingUrl : ""),
+              icon: "/favicon.ico",
+              tag: key,
+            });
+            n.onclick = () => { window.focus(); n.close(); };
+          }
+        });
+      });
+    };
+    check(); // run immediately on mount
+    const interval = setInterval(check, 60000);
+    return () => clearInterval(interval);
+  }, [events]);
 
   const year = cursor.getFullYear(), month = cursor.getMonth();
   const firstDay = new Date(year, month, 1);
@@ -2049,7 +2096,17 @@ function CalendarView({ candidates }) {
           <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Calendario y alertas</h1>
           <p style={{ color: C.muted, fontSize: 14 }}>Agenda entrevistas, evaluaciones y citas del proceso de selección</p>
         </div>
-        <Btn onClick={() => openNew(null)}><Plus size={16} /> Nuevo evento</Btn>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {typeof Notification !== "undefined" && Notification.permission !== "granted" && (
+            <button onClick={() => Notification.requestPermission().then(() => loadEvents())}
+              style={{ background: C.warningL, color: C.warning, border: `1px solid ${C.warning}40`,
+                borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12,
+                fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+              🔔 Activar notificaciones
+            </button>
+          )}
+          <Btn onClick={() => openNew(null)}><Plus size={16} /> Nuevo evento</Btn>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 20, alignItems: "start" }}>
@@ -2080,7 +2137,7 @@ function CalendarView({ candidates }) {
                       <div key={ev.id} onClick={e => { e.stopPropagation(); openEdit(ev); }}
                         title={ev.title}
                         style={{ fontSize: 9.5, background: t.bg, color: t.color, borderRadius: 4, padding: "1px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
-                        {ev.eventTime ? ev.eventTime + " " : ""}{ev.title}
+                        {ev.priority === "Alta" ? "🔴 " : ev.priority === "Baja" ? "🟢 " : ""}{ev.eventTime ? ev.eventTime + " " : ""}{ev.title}
                       </div>
                     );
                   })}
@@ -2121,6 +2178,10 @@ function CalendarView({ candidates }) {
                       {ev.eventTime ? ` · ${ev.eventTime}` : ""} · {ev.eventType}
                     </div>
                     {ev.candidateName && <div style={{ fontSize: 11, color: C.accent, marginTop: 2 }}>👤 {ev.candidateName}</div>}
+                    <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
+                      {ev.priority && (() => { const pl = PRIORITY_LEVELS.find(p => p.id === ev.priority); return pl ? <span style={{ fontSize: 10, background: pl.bg, color: pl.color, borderRadius: 99, padding: "1px 7px", fontWeight: 600 }}>{pl.icon} {pl.id}</span> : null; })()}
+                      {ev.meetingUrl && <a href={ev.meetingUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, background: `${C.info}15`, color: C.info, borderRadius: 99, padding: "1px 7px", textDecoration: "none", fontWeight: 600 }}>📹 Unirse</a>}
+                    </div>
                   </div>
                 );
               })}
@@ -2147,14 +2208,45 @@ function CalendarView({ candidates }) {
 }
 
 function EventModal({ event, prefillDate, candidates, onClose, onSave, onDelete }) {
+  const blank = {
+    title: "", eventType: "Entrevista", eventDate: prefillDate || "",
+    eventTime: "", candidateId: "", notes: "", status: "Pendiente",
+    meetingUrl: "", priority: "Media",
+  };
   const [form, setForm] = useState(event ? {
-    title: event.title || "", eventType: event.eventType || "Entrevista", eventDate: (event.eventDate || "").slice(0, 10),
-    eventTime: event.eventTime || "", candidateId: event.candidateId || "", notes: event.notes || "", status: event.status || "Pendiente",
-  } : {
-    title: "", eventType: "Entrevista", eventDate: prefillDate, eventTime: "", candidateId: "", notes: "", status: "Pendiente",
-  });
+    title: event.title || "", eventType: event.eventType || "Entrevista",
+    eventDate: (event.eventDate || "").slice(0, 10), eventTime: event.eventTime || "",
+    candidateId: event.candidateId || "", notes: event.notes || "",
+    status: event.status || "Pendiente", meetingUrl: event.meetingUrl || "",
+    priority: event.priority || "Media",
+  } : blank);
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  /* Genera link de Jitsi automáticamente */
+  const genJitsi = () => {
+    const room = "ReclutaPlus-" + Math.random().toString(36).substr(2, 8).toUpperCase();
+    setForm(f => ({ ...f, meetingUrl: "https://meet.jit.si/" + room }));
+  };
+
+  /* Abre WhatsApp con detalles del evento */
+  const sendWhatsApp = () => {
+    const cand = candidates.find(c => c.id === form.candidateId);
+    const dateStr = form.eventDate
+      ? new Date(form.eventDate + "T12:00:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long" })
+      : "";
+    const timeStr = form.eventTime ? " a las " + form.eventTime : "";
+    const meetStr = form.meetingUrl ? "\n\n📹 Link de videollamada:\n" + form.meetingUrl : "";
+    const text = encodeURIComponent(
+      "Hola" + (cand ? " " + cand.name : "") + ",\n\n" +
+      "Te confirmamos tu " + form.eventType.toLowerCase() + " programada para el " + dateStr + timeStr + ".\n\n" +
+      "📌 " + form.title +
+      (form.notes ? "\n\n📝 Detalles:\n" + form.notes : "") +
+      meetStr +
+      "\n\n— Norma Kuján Consultoría & Coaching"
+    );
+    window.open("https://wa.me/" + WA_NUMBER + "?text=" + text, "_blank");
+  };
 
   const save = async () => {
     if (!form.title.trim()) { alert("El título es requerido"); return; }
@@ -2162,16 +2254,50 @@ function EventModal({ event, prefillDate, candidates, onClose, onSave, onDelete 
     setSaving(true);
     const cand = candidates.find(c => c.id === form.candidateId);
     await onSave({
-      title: form.title, event_type: form.eventType, event_date: form.eventDate, event_time: form.eventTime || null,
-      candidate_id: form.candidateId || null, candidate_name: cand ? cand.name : null, notes: form.notes || null, status: form.status,
+      title: form.title, event_type: form.eventType,
+      event_date: form.eventDate, event_time: form.eventTime || null,
+      candidate_id: form.candidateId || null, candidate_name: cand ? cand.name : null,
+      notes: form.notes || null, status: form.status,
+      meeting_url: form.meetingUrl || null, priority: form.priority,
     });
     setSaving(false);
   };
 
+  const pLevel = PRIORITY_LEVELS.find(p => p.id === form.priority) || PRIORITY_LEVELS[1];
+
   return (
-    <Modal open onClose={onClose} title={event ? "Editar evento" : "Nuevo evento"}>
+    <Modal open onClose={onClose} title={event ? "Editar evento" : "Nuevo evento"} width={560}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+        {/* Título */}
         <Inp label="Título" required value={form.title} onChange={set("title")} placeholder="Ej: Entrevista con candidato..." />
+
+        {/* Prioridad */}
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: 8 }}>
+            Prioridad
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            {PRIORITY_LEVELS.map(p => (
+              <button key={p.id} type="button" onClick={() => setForm(f => ({ ...f, priority: p.id }))}
+                style={{ flex: 1, padding: "8px 6px", borderRadius: 8,
+                  border: `2px solid ${form.priority === p.id ? p.color : C.border}`,
+                  background: form.priority === p.id ? p.bg : "#fff", cursor: "pointer",
+                  fontSize: 13, fontWeight: form.priority === p.id ? 700 : 400,
+                  color: form.priority === p.id ? p.color : C.muted, fontFamily: "inherit",
+                  transition: "all 0.15s" }}>
+                {p.icon} {p.id}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>
+            {pLevel.id === "Alta" && "🔔 Avisos: 60, 30, 15 y 5 minutos antes"}
+            {pLevel.id === "Media" && "🔔 Avisos: 30 y 15 minutos antes"}
+            {pLevel.id === "Baja" && "🔔 Aviso: 15 minutos antes"}
+          </div>
+        </div>
+
+        {/* Tipo + Estado */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Tipo</label>
@@ -2186,23 +2312,81 @@ function EventModal({ event, prefillDate, candidates, onClose, onSave, onDelete 
             </select>
           </div>
         </div>
+
+        {/* Fecha + Hora */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Inp label="Fecha" type="date" required value={form.eventDate} onChange={set("eventDate")} />
           <Inp label="Hora (opcional)" type="time" value={form.eventTime} onChange={set("eventTime")} />
         </div>
+
+        {/* Candidato */}
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Candidato relacionado (opcional)</label>
           <select value={form.candidateId} onChange={set("candidateId")} style={{ ...inputSt }}>
             <option value="">— Ninguno —</option>
-            {candidates.map(c => <option key={c.id} value={c.id}>{c.name}{c.position ? ` · ${c.position}` : ""}</option>)}
+            {candidates.map(c => <option key={c.id} value={c.id}>{c.name}{c.position ? " · " + c.position : ""}</option>)}
           </select>
         </div>
-        <Inp label="Notas / detalle" rows={3} value={form.notes} onChange={set("notes")} placeholder="Detalles de la cita, dirección, link de videollamada, etc." />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
-          {onDelete ? <Btn variant="danger" size="sm" onClick={onDelete}><Trash2 size={14} /> Eliminar</Btn> : <div />}
+
+        {/* Videollamada */}
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em", display: "block", marginBottom: 8 }}>
+            📹 Videollamada (opcional)
+          </label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button type="button" onClick={genJitsi}
+              style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 8,
+                padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+              ⚡ Generar link Jitsi (gratis)
+            </button>
+            {form.meetingUrl && (
+              <a href={form.meetingUrl} target="_blank" rel="noopener noreferrer"
+                style={{ background: `${C.info}15`, color: C.info, border: `1px solid ${C.info}30`,
+                  borderRadius: 8, padding: "8px 12px", fontSize: 13, textDecoration: "none",
+                  display: "flex", alignItems: "center", gap: 4 }}>
+                🔗 Probar link
+              </a>
+            )}
+          </div>
+          <input value={form.meetingUrl} onChange={set("meetingUrl")}
+            placeholder="O pega aquí tu link de Google Meet, Zoom o Teams..."
+            style={{ ...inputSt, fontSize: 13 }} />
+          {form.meetingUrl && (
+            <div style={{ marginTop: 6, padding: "6px 10px", background: "#F0FDFA",
+              borderRadius: 6, fontSize: 11, color: "#0F766E", border: "1px solid #5EEAD4",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              ✅ {form.meetingUrl}
+            </div>
+          )}
+        </div>
+
+        {/* Notas */}
+        <Inp label="Notas / detalle" rows={2} value={form.notes} onChange={set("notes")}
+          placeholder="Dirección, instrucciones, temas a tratar..." />
+
+        {/* Botones */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            {onDelete && <Btn variant="danger" size="sm" onClick={onDelete}><Trash2 size={14} /> Eliminar</Btn>}
+            {(form.candidateId || form.meetingUrl) && (
+              <button type="button" onClick={sendWhatsApp}
+                style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 8,
+                  padding: "7px 13px", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                  display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                WhatsApp
+              </button>
+            )}
+          </div>
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-            <Btn onClick={save} disabled={saving}>{saving ? <><Spinner size={14} /> Guardando...</> : <><Check size={15} /> Guardar</>}</Btn>
+            <Btn onClick={save} disabled={saving}>
+              {saving ? <><Spinner size={14} /> Guardando...</> : <><Check size={15} /> Guardar</>}
+            </Btn>
           </div>
         </div>
       </div>
@@ -2210,9 +2394,7 @@ function EventModal({ event, prefillDate, candidates, onClose, onSave, onDelete 
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SETTINGS VIEW
-═══════════════════════════════════════════════════════════ */
+
 function SettingsView({ user, candidates, companies, formSubmissions }) {
   const [old, setOld] = useState(""); const [neo, setNeo] = useState(""); const [conf, setConf] = useState("");
   const [msg, setMsg] = useState(null);
