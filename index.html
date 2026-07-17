@@ -465,7 +465,7 @@ const SERVICE_DISCLAIMER = "Toda la información recopilada y tratada durante el
    MAPPERS (DB ↔ App)
 ═══════════════════════════════════════════════════════════ */
 const mapUser = r => ({ id: r.id, username: r.username, password: r.password, role: r.role, name: r.name, companyName: r.company_name, email: r.email, active: r.active, createdAt: r.created_at, logoUrl: r.logo_url || null });
-const mapCandidate = r => ({ id: r.id, name: r.name, email: r.email, phone: r.phone, position: r.position, status: r.status, skills: r.skills, notes: r.notes, cvFileName: r.cv_file_name, cvUrl: r.cv_url, cvText: r.cv_text, createdAt: r.created_at });
+const mapCandidate = r => ({ id: r.id, name: r.name, email: r.email, phone: r.phone, position: r.position, status: r.status, skills: r.skills, notes: r.notes, cvFileName: r.cv_file_name, cvUrl: r.cv_url, cvText: r.cv_text, createdAt: r.created_at, recruiterNotes: r.recruiter_notes || '' });
 const mapForm = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, formData: r.form_data, downloaded: r.downloaded, submittedAt: r.submitted_at });
 const mapConsultation = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, message: r.message, read: r.read, createdAt: r.created_at });
 const mapPositionRequest = r => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, positionName: r.position_name, quantity: r.quantity, salaryRange: r.salary_range, startDate: r.start_date, createdAt: r.created_at });
@@ -1265,10 +1265,10 @@ function PhoneField({ value, onChange }) {
       : { code: "593", num: v };
   };
   const parsed = parsePhone(value);
-  const [code, setCode] = React.useState(parsed.code);
-  const [num, setNum] = React.useState(parsed.num);
+  const [code, setCode] = useState(parsed.code);
+  const [num, setNum] = useState(parsed.num);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const p = parsePhone(value);
     setCode(p.code);
     setNum(p.num);
@@ -1409,9 +1409,504 @@ const PIPELINE_STAGES = [
   { id: "En proceso",      label: "En proceso (heredado)", color: "#2563EB", bg: "#DBEAFE" },
 ];
 
+/* ═══════════════════════════════════════════════════════════
+   PIPELINE CANDIDATE MODAL — Revisión completa sin salir del pipeline
+═══════════════════════════════════════════════════════════ */
+function parseNotes(notes) {
+  if (!notes) return {};
+  const extract = (label) => {
+    const m = notes.match(new RegExp(label + "[:\\s]+([^\\n]+)", "i"));
+    return m ? m[1].trim() : null;
+  };
+  const extractBlock = (label) => {
+    const lines = notes.split("\n");
+    const idx = lines.findIndex(l => l.toLowerCase().includes(label.toLowerCase()));
+    if (idx < 0) return null;
+    const block = [];
+    for (let i = idx + 1; i < lines.length && i < idx + 6; i++) {
+      if (lines[i].match(/^[─\d]/) || lines[i].match(/^\w+:/)) break;
+      if (lines[i].trim()) block.push(lines[i].trim());
+    }
+    return block.join(" ").trim() || null;
+  };
+  return {
+    cedula:        extract("Cédula"),
+    nacimiento:    extract("Fecha de nacimiento"),
+    civil:         extract("Estado civil"),
+    ciudad:        extract("Ciudad"),
+    vehiculo:      extract("Posee vehículo"),
+    titulo:        extract("Título profesional"),
+    maestria:      extract("Maestría"),
+    salario:       extract("Aspiración salarial"),
+    odoo:          extract("Odoo para facturación"),
+    motivos:       extractBlock("Motivos de búsqueda"),
+    virtudes:      extractBlock("Virtudes y cualidades"),
+    mejoras:       extractBlock("Oportunidades de mejora"),
+    herramientas:  extractBlock("Herramientas tecnológicas"),
+    credito:       extractBlock("crédito y cobranza"),
+    logro:         extractBlock("Mayor logro"),
+    desvinculacion:extractBlock("desvinculación"),
+  };
+}
+
+function smartSummary(c, fd) {
+  const skills = (c.skills || fd.herramientas || "").split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  const fortalezas = [];
+  const alertas = [];
+  if (c.cvUrl)           fortalezas.push("CV adjunto");
+  if (fd.maestria === "Sí") fortalezas.push("Posgrado / Maestría");
+  if (fd.odoo === "Sí")  fortalezas.push("Maneja Odoo");
+  if (fd.vehiculo === "Sí") fortalezas.push("Posee vehículo");
+  if (skills.length > 3) fortalezas.push(`${skills.length} herramientas declaradas`);
+  if (!c.cvUrl)          alertas.push("Sin CV adjunto");
+  if (!fd.salario)       alertas.push("Salario no especificado");
+  if (!c.phone)          alertas.push("Sin teléfono registrado");
+
+  let score = 50;
+  if (c.cvUrl)              score += 15;
+  if (c.email)              score += 5;
+  if (c.phone)              score += 5;
+  if (fd.titulo)            score += 8;
+  if (fd.maestria === "Sí") score += 7;
+  if (skills.length > 2)   score += 10;
+  score = Math.min(98, score);
+  return { skills, fortalezas, alertas, score };
+}
+
+function PipelineCandidateModal({ allCandidates, currentIdx, onNavigate, onClose, onUpdated }) {
+  const c = allCandidates[currentIdx];
+  const total = allCandidates.length;
+  const [notes, setNotes] = useState(c.recruiterNotes || "");
+  const [checklist, setChecklist] = useState({ cv: false, exp: false, edu: false, sal: false, disp: false });
+  const [cvSrc, setCvSrc] = useState(null);
+  const [cvLoading, setCvLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const fd = parseNotes(c.notes);
+  const sm = smartSummary(c, fd);
+
+  const NEXT_STAGE = {
+    "Nuevo": "CV revisado", "CV revisado": "Pre-seleccionado",
+    "Pre-seleccionado": "En entrevista", "En entrevista": "Evaluación",
+    "Evaluación": "Finalista", "Finalista": "Seleccionado",
+  };
+  const nextStage = NEXT_STAGE[c.status];
+
+  const showToast = (msg, type = "ok") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  // Load checklist from localStorage
+  useEffect(() => {
+    setNotes(c.recruiterNotes || "");
+    try { setChecklist({ cv:false,exp:false,edu:false,sal:false,disp:false, ...JSON.parse(localStorage.getItem("rp_cl_" + c.id) || "{}") }); }
+    catch { setChecklist({ cv:false,exp:false,edu:false,sal:false,disp:false }); }
+  }, [c.id]);
+
+  // Save checklist to localStorage
+  useEffect(() => { localStorage.setItem("rp_cl_" + c.id, JSON.stringify(checklist)); }, [checklist]);
+
+  // Load CV
+  useEffect(() => {
+    setCvSrc(null);
+    if (!c.cvUrl) return;
+    if (c.cvUrl.startsWith("data:")) {
+      try {
+        const [h, d] = c.cvUrl.split(",");
+        const mime = h.match(/data:([^;]+)/)[1];
+        const bytes = atob(d);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        setCvSrc(URL.createObjectURL(new Blob([arr], { type: mime })));
+      } catch { setCvSrc(null); }
+    } else if (c.cvUrl.startsWith("http")) {
+      setCvSrc(c.cvUrl);
+    } else {
+      setCvLoading(true);
+      getSignedUrl(c.cvUrl).then(url => { setCvSrc(url); setCvLoading(false); }).catch(() => setCvLoading(false));
+    }
+  }, [c.id]);
+
+  const saveNotes = async () => {
+    setSaving(true);
+    await db.update("candidates", c.id, { recruiter_notes: notes });
+    onUpdated(c.id, { recruiterNotes: notes });
+    setSaving(false);
+    showToast("Notas guardadas");
+  };
+
+  const discard = async () => {
+    if (!confirm("¿Descartar a " + c.name + "? Podrá recuperarlo después desde el pipeline.")) return;
+    setSaving(true);
+    await db.update("candidates", c.id, { status: "Descartado", recruiter_notes: notes });
+    onUpdated(c.id, { status: "Descartado", recruiterNotes: notes });
+    setSaving(false);
+    showToast("Candidato descartado", "warn");
+    setTimeout(() => {
+      if (currentIdx < total - 1) onNavigate(currentIdx);
+      else if (currentIdx > 0) onNavigate(currentIdx - 1);
+      else onClose();
+    }, 800);
+  };
+
+  const approve = async () => {
+    if (!nextStage) return;
+    setApproving(true);
+    await db.update("candidates", c.id, { status: nextStage, recruiter_notes: notes });
+    onUpdated(c.id, { status: nextStage, recruiterNotes: notes });
+    setApproving(false);
+    showToast("Movido a: " + nextStage);
+    setTimeout(() => {
+      if (currentIdx < total - 1) onNavigate(currentIdx + 1);
+      else onClose();
+    }, 800);
+  };
+
+  // Stage badge
+  const stageInfo = PIPELINE_STAGES.find(s => s.id === c.status) || { color: C.muted, bg: C.bg, label: c.status };
+
+  // Check item component
+  const CL = ({ k, label }) => (
+    <label style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px",
+      borderRadius:8, cursor:"pointer", background: checklist[k] ? "#F0FDF4" : "transparent",
+      border: `1px solid ${checklist[k] ? "#BBF7D0" : C.border}`, marginBottom:6,
+      transition:"all .15s", userSelect:"none" }}>
+      <div onClick={() => setChecklist(prev => ({...prev, [k]: !prev[k]}))}
+        style={{ width:18, height:18, borderRadius:5, border:`2px solid ${checklist[k] ? C.success : C.border}`,
+          background: checklist[k] ? C.success : "#fff", display:"flex", alignItems:"center",
+          justifyContent:"center", flexShrink:0, transition:"all .15s" }}>
+        {checklist[k] && <Check size={12} color="#fff"/>}
+      </div>
+      <span style={{ fontSize:13, color: checklist[k] ? "#15803D" : C.text, fontWeight: checklist[k] ? 600 : 400 }}>
+        {label}
+      </span>
+    </label>
+  );
+
+  // Info field
+  const IF = ({ label, value, full }) => value ? (
+    <div style={{ gridColumn: full ? "1 / -1" : "auto", marginBottom:10 }}>
+      <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase",
+        letterSpacing:"0.05em", marginBottom:3 }}>{label}</div>
+      <div style={{ fontSize:13.5, color:C.text, lineHeight:1.6 }}>{value}</div>
+    </div>
+  ) : null;
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        backdropFilter:"blur(3px)", animation:"fadeIn .2s ease" }}>
+
+      <div style={{ width:"92vw", height:"92vh", background:"#fff", borderRadius:20,
+        display:"flex", flexDirection:"column", overflow:"hidden",
+        boxShadow:"0 32px 96px rgba(0,0,0,0.35)", position:"relative" }}>
+
+        {/* ── TOAST ── */}
+        {toast && (
+          <div style={{ position:"absolute", top:16, left:"50%", transform:"translateX(-50%)",
+            zIndex:10, background: toast.type==="warn" ? "#FEF3C7" : "#DCFCE7",
+            color: toast.type==="warn" ? "#92400E" : "#065F46",
+            border: `1px solid ${toast.type==="warn" ? "#FDE68A" : "#86EFAC"}`,
+            borderRadius:99, padding:"7px 20px", fontSize:13, fontWeight:600,
+            boxShadow:"0 4px 16px rgba(0,0,0,0.12)", whiteSpace:"nowrap" }}>
+            {toast.msg}
+          </div>
+        )}
+
+        {/* ── TOP BAR ── */}
+        <div style={{ display:"flex", alignItems:"center", gap:16, padding:"14px 24px",
+          borderBottom:`1px solid ${C.border}`, flexShrink:0, background:"#FAFBFF" }}>
+
+          {/* Navigation */}
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <button onClick={() => onNavigate(currentIdx - 1)} disabled={currentIdx === 0}
+              style={{ width:32, height:32, borderRadius:8, border:`1px solid ${C.border}`,
+                background:"#fff", cursor:currentIdx===0?"not-allowed":"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                opacity:currentIdx===0?0.35:1, transition:"all .15s" }}>
+              <ChevronLeft size={16} color={C.text}/>
+            </button>
+            <span style={{ fontSize:13, color:C.muted, fontWeight:500, minWidth:60, textAlign:"center" }}>
+              {currentIdx + 1} de {total}
+            </span>
+            <button onClick={() => onNavigate(currentIdx + 1)} disabled={currentIdx === total - 1}
+              style={{ width:32, height:32, borderRadius:8, border:`1px solid ${C.border}`,
+                background:"#fff", cursor:currentIdx===total-1?"not-allowed":"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                opacity:currentIdx===total-1?0.35:1, transition:"all .15s" }}>
+              <ChevronRight size={16} color={C.text}/>
+            </button>
+          </div>
+
+          {/* Name + stage badge */}
+          <div style={{ display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
+            <h2 style={{ fontSize:18, fontWeight:700, color:C.text, margin:0,
+              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name}</h2>
+            {c.position && <span style={{ fontSize:13, color:C.muted }}>· {c.position}</span>}
+            <span style={{ background:stageInfo.bg, color:stageInfo.color,
+              border:`1px solid ${stageInfo.color}30`, borderRadius:99,
+              padding:"4px 14px", fontSize:12, fontWeight:600, flexShrink:0 }}>
+              {stageInfo.label}
+            </span>
+          </div>
+
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, border:"none",
+            background:"transparent", cursor:"pointer", display:"flex", alignItems:"center",
+            justifyContent:"center", color:C.muted, flexShrink:0 }}>
+            <X size={18}/>
+          </button>
+        </div>
+
+        {/* ── BODY: 2 COLUMNS ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"40% 60%", flex:1, overflow:"hidden", minHeight:0 }}>
+
+          {/* LEFT PANEL */}
+          <div style={{ background:"#F8FAFF", borderRight:`1px solid ${C.border}`,
+            overflowY:"auto", display:"flex", flexDirection:"column" }}>
+
+            {/* ── Smart Summary ── */}
+            <div style={{ padding:"16px 20px", background:`linear-gradient(135deg,${C.primary},#2563EB)`, color:"#fff" }}>
+              <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase",
+                letterSpacing:"0.06em", opacity:.7, marginBottom:8 }}>
+                Resumen del perfil
+              </div>
+              {/* Compatibility score */}
+              <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:12 }}>
+                <div style={{ position:"relative", width:52, height:52, flexShrink:0 }}>
+                  <svg width="52" height="52" viewBox="0 0 52 52">
+                    <circle cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="5"/>
+                    <circle cx="26" cy="26" r="22" fill="none" stroke="#fff" strokeWidth="5"
+                      strokeDasharray={`${(sm.score/100)*138.2} 138.2`}
+                      strokeLinecap="round" transform="rotate(-90 26 26)"/>
+                  </svg>
+                  <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
+                    justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff" }}>
+                    {sm.score}%
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600, marginBottom:2 }}>Perfil completado</div>
+                  <div style={{ fontSize:12, opacity:.75 }}>
+                    {sm.score >= 80 ? "Candidato bien documentado" :
+                     sm.score >= 60 ? "Perfil con información básica" : "Perfil incompleto"}
+                  </div>
+                </div>
+              </div>
+              {/* Fortalezas */}
+              {sm.fortalezas.length > 0 && (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:6 }}>
+                  {sm.fortalezas.map(f => (
+                    <span key={f} style={{ background:"rgba(255,255,255,0.18)", borderRadius:99,
+                      padding:"2px 10px", fontSize:11, fontWeight:500 }}>✓ {f}</span>
+                  ))}
+                </div>
+              )}
+              {/* Skills */}
+              {sm.skills.length > 0 && (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                  {sm.skills.slice(0,6).map(s => (
+                    <span key={s} style={{ background:"rgba(255,255,255,0.12)", borderRadius:99,
+                      padding:"2px 8px", fontSize:11 }}>{s}</span>
+                  ))}
+                </div>
+              )}
+              {/* Alertas */}
+              {sm.alertas.length > 0 && (
+                <div style={{ marginTop:8, fontSize:11, opacity:.75 }}>
+                  {sm.alertas.map(a => <span key={a}>⚠ {a}  </span>)}
+                </div>
+              )}
+            </div>
+
+            {/* ── Personal Info ── */}
+            <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                letterSpacing:"0.05em", marginBottom:12 }}>Información personal</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
+                <IF label="Correo"       value={c.email}/>
+                <IF label="Teléfono"     value={c.phone}/>
+                <IF label="Cédula"       value={fd.cedula}/>
+                <IF label="Nacimiento"   value={fd.nacimiento}/>
+                <IF label="Estado civil" value={fd.civil}/>
+                <IF label="Ciudad"       value={fd.ciudad}/>
+                <IF label="Vehículo"     value={fd.vehiculo}/>
+                <IF label="Salario"      value={fd.salario || c.skills && c.skills.match(/\$[\d,]+/) && c.skills.match(/\$[\d,]+/)[0]}/>
+              </div>
+            </div>
+
+            {/* ── Formación y experiencia ── */}
+            <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                letterSpacing:"0.05em", marginBottom:12 }}>Formación y experiencia</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
+                <IF label="Título"    value={fd.titulo}/>
+                <IF label="Maestría"  value={fd.maestria}/>
+                <IF label="Odoo"      value={fd.odoo}/>
+              </div>
+              {fd.herramientas && <IF label="Herramientas" value={fd.herramientas} full/>}
+              {fd.virtudes     && <IF label="Virtudes y cualidades" value={fd.virtudes} full/>}
+              {fd.mejoras      && <IF label="Áreas de mejora" value={fd.mejoras} full/>}
+              {fd.logro        && <IF label="Mayor logro profesional" value={fd.logro} full/>}
+              {fd.credito      && <IF label="Exp. crédito y cobranza" value={fd.credito} full/>}
+              {fd.desvinculacion && <IF label="Motivo desvinculación" value={fd.desvinculacion} full/>}
+              {fd.motivos      && <IF label="Motivos de búsqueda" value={fd.motivos} full/>}
+            </div>
+
+            {/* ── Checklist ── */}
+            <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                letterSpacing:"0.05em", marginBottom:12 }}>Checklist de validación</div>
+              <CL k="cv"  label="CV revisado"/>
+              <CL k="exp" label="Experiencia validada"/>
+              <CL k="edu" label="Formación validada"/>
+              <CL k="sal" label="Salario compatible"/>
+              <CL k="disp" label="Disponibilidad confirmada"/>
+              <div style={{ fontSize:11, color:C.muted, marginTop:6, textAlign:"right" }}>
+                {Object.values(checklist).filter(Boolean).length}/5 validados
+              </div>
+            </div>
+
+            {/* ── Notas internas ── */}
+            <div style={{ padding:"16px 20px", flex:1 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase",
+                letterSpacing:"0.05em", marginBottom:10 }}>Notas internas del reclutador</div>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="Agrega observaciones, impresiones o comentarios sobre este candidato..."
+                style={{ width:"100%", minHeight:90, border:`1.5px solid ${C.border}`, borderRadius:10,
+                  padding:"10px 12px", fontSize:13, color:C.text, resize:"vertical",
+                  fontFamily:"inherit", lineHeight:1.6, outline:"none", boxSizing:"border-box",
+                  background:"#fff" }}
+                onFocus={e => e.target.style.borderColor = C.accent}
+                onBlur={e => e.target.style.borderColor = C.border}
+              />
+            </div>
+          </div>
+
+          {/* RIGHT PANEL — PDF Viewer */}
+          <div style={{ display:"flex", flexDirection:"column", background:"#fff", overflow:"hidden" }}>
+            {/* CV toolbar */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+              padding:"10px 16px", borderBottom:`1px solid ${C.border}`,
+              background:"#FAFBFF", flexShrink:0 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:C.text, display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:16 }}>📎</span>
+                {c.cvFileName || "Hoja de vida"}
+              </div>
+              {c.cvUrl && (
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={() => viewCV(c.cvUrl, c.cvFileName)}
+                    style={{ background:`${C.info}15`, color:C.info, border:"none", borderRadius:7,
+                      padding:"5px 12px", cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit" }}>
+                    Nueva pestaña
+                  </button>
+                  <button onClick={() => downloadCV(c.cvUrl, c.cvFileName)}
+                    style={{ background:`${C.accent}15`, color:C.accent, border:"none", borderRadius:7,
+                      padding:"5px 12px", cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit" }}>
+                    Descargar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* PDF content */}
+            <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
+              {!c.cvUrl ? (
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+                  justifyContent:"center", height:"100%", color:C.muted, gap:16 }}>
+                  <div style={{ fontSize:52, opacity:.3 }}>📄</div>
+                  <div style={{ fontSize:15, fontWeight:500 }}>Sin CV adjunto</div>
+                  <div style={{ fontSize:13 }}>El candidato no ha subido hoja de vida</div>
+                </div>
+              ) : cvLoading ? (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", gap:12, color:C.muted }}>
+                  <Spinner size={24}/> Cargando CV...
+                </div>
+              ) : cvSrc ? (
+                <iframe src={cvSrc} title="CV" width="100%" height="100%"
+                  style={{ border:"none", display:"block" }}/>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+                  justifyContent:"center", height:"100%", color:C.muted, gap:12 }}>
+                  <div style={{ fontSize:36 }}>⚠️</div>
+                  <div style={{ fontSize:14 }}>No se pudo cargar el CV</div>
+                  <button onClick={() => { getSignedUrl(c.cvUrl).then(u => setCvSrc(u)); }}
+                    style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8,
+                      padding:"8px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13 }}>
+                    Reintentar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── BOTTOM ACTION BAR ── */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"14px 24px", borderTop:`1px solid ${C.border}`,
+          background:"#FAFBFF", flexShrink:0, gap:12 }}>
+
+          <button onClick={discard} disabled={saving || c.status === "Descartado"}
+            style={{ background:"transparent", color:C.danger, border:`1.5px solid ${C.danger}30`,
+              borderRadius:10, padding:"9px 18px", cursor:"pointer", fontSize:14,
+              fontWeight:600, fontFamily:"inherit", opacity: c.status==="Descartado"?0.4:1,
+              transition:"all .15s" }}>
+            Descartar
+          </button>
+
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={saveNotes} disabled={saving}
+              style={{ background:"#fff", color:C.text, border:`1.5px solid ${C.border}`,
+                borderRadius:10, padding:"9px 20px", cursor:"pointer", fontSize:14,
+                fontWeight:600, fontFamily:"inherit", display:"flex", alignItems:"center", gap:7 }}>
+              {saving ? <><Spinner size={14}/> Guardando...</> : <><Check size={14}/> Guardar notas</>}
+            </button>
+
+            {nextStage && (
+              <button onClick={approve} disabled={approving || saving}
+                style={{ background:`linear-gradient(135deg,${C.accent},${C.primary})`,
+                  color:"#fff", border:"none", borderRadius:10, padding:"9px 22px",
+                  cursor:"pointer", fontSize:14, fontWeight:700, fontFamily:"inherit",
+                  display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 14px rgba(13,148,136,0.35)",
+                  transition:"all .2s" }}>
+                {approving
+                  ? <><Spinner size={14}/> Moviendo...</>
+                  : <>Aprobar → {nextStage} <ChevronRight size={15}/></>}
+              </button>
+            )}
+            {!nextStage && c.status !== "Seleccionado" && (
+              <span style={{ color:C.muted, fontSize:13, display:"flex", alignItems:"center", gap:6 }}>
+                <Check size={14} color={C.success}/> {c.status}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PipelineView({ candidates, setCandidates, refreshCandidates }) {
   const [posFilter, setPosFilter] = useState("");
-  const [moving, setMoving] = useState(null); // { candidateId, newStatus }
+  const [moving, setMoving] = useState(null);
+  const [modalIdx, setModalIdx] = useState(null);
+
+  // All candidates in pipeline order for navigation
+  const ordered = PIPELINE_STAGES
+    .filter(s => !["Activo","En proceso"].includes(s.id))
+    .flatMap(s => candidates.filter(c => (c.status || "Nuevo") === s.id));
+
+  const openModal = (c) => {
+    const idx = ordered.findIndex(x => x.id === c.id);
+    setModalIdx(idx >= 0 ? idx : 0);
+  };
+
+  const handleModalUpdate = (id, patch) => {
+    setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+  };
   const positions = [...new Set(candidates.map(c => c.position).filter(Boolean))];
   const filtered = posFilter ? candidates.filter(c => c.position === posFilter) : candidates;
   
@@ -1504,21 +1999,27 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
                   {stageCandidates.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "20px 8px", color: C.muted, fontSize: 12 }}>Sin candidatos</div>
                   ) : stageCandidates.map(c => (
-                    <div key={c.id} style={{ background: C.card, borderRadius: 8, padding: "10px 12px",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${C.border}`,
-                      opacity: moving === c.id ? 0.5 : 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${C.accent}20`,
-                          color: C.accent, display: "flex", alignItems: "center", justifyContent: "center",
-                          fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                    <div key={c.id}
+                      onClick={() => openModal(c)}
+                      style={{ background: C.card, borderRadius: 10, padding: "12px 14px",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${C.border}`,
+                        opacity: moving === c.id ? 0.5 : 1, cursor: "pointer", transition: "all .15s" }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.1)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "translateY(0)"; }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <div style={{ width: 30, height: 30, borderRadius: "50%", background: `linear-gradient(135deg,${C.accent},${C.primary})`,
+                          color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                          fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
                           {(c.name || "?")[0].toUpperCase()}
                         </div>
-                        <div style={{ minWidth: 0 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ fontWeight: 600, color: C.text, fontSize: 13, overflow: "hidden",
                             textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
                           {c.position && <div style={{ color: C.muted, fontSize: 11 }}>{c.position}</div>}
                         </div>
+                        <div style={{ fontSize: 10, color: C.accent, opacity: 0.6 }}>Ver →</div>
                       </div>
+                      {c.cvUrl && <div style={{ fontSize: 10, color: C.success, marginBottom: 4, display:"flex", alignItems:"center", gap:3 }}><span>📎</span> CV adjunto</div>}
                       {/* Move buttons */}
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
                         {visibleStages.filter(s => s.id !== stage.id && !["Activo","En proceso"].includes(s.id)).slice(0, 4).map(s => (
@@ -1538,6 +2039,16 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
             );
           })}
         </div>
+      )}
+      {/* ── PIPELINE CANDIDATE MODAL ── */}
+      {modalIdx !== null && ordered[modalIdx] && (
+        <PipelineCandidateModal
+          allCandidates={ordered}
+          currentIdx={modalIdx}
+          onNavigate={idx => setModalIdx(idx)}
+          onClose={() => setModalIdx(null)}
+          onUpdated={handleModalUpdate}
+        />
       )}
     </div>
   );
