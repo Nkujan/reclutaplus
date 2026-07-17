@@ -325,6 +325,15 @@ const ClipboardList = _Icon([
   ["line", { x1: "9", y1: "12", x2: "15", y2: "12" }],
   ["line", { x1: "9", y1: "16", x2: "15", y2: "16" }],
 ]);
+const ClipboardCheck = _Icon([
+  ["path", { d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" }],
+  ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1", ry: "1" }],
+  ["polyline", { points: "9 11 12 14 22 4" }],
+]);
+const LinkIcon = _Icon([
+  ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" }],
+  ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" }],
+]);
 const ThumbsUp = _Icon([
   ["path", { d: "M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" }],
 ]);
@@ -605,6 +614,7 @@ const NAV = [
   { id: "pipeline", icon: Layers, label: "Pipeline de selección" },
   { id: "forms", icon: FileText, label: "Formularios de cargo" },
   { id: "positionRequests", icon: ClipboardList, label: "Posiciones requeridas" },
+  { id: "evaluaciones", icon: ClipboardCheck, label: "Evaluaciones", badge: false },
   { id: "companies", icon: Building2, label: "Empresas" },
   { id: "feedback", icon: MessageSquare, label: "Feedback empresarial", badge: true },
   { id: "calendar", icon: CalendarIcon, label: "Calendario y alertas" },
@@ -2022,8 +2032,7 @@ function CalendarView({ candidates }) {
             const n = new Notification(pl.icon + " " + ev.title, {
               body: "En " + t + " minuto" + (t !== 1 ? "s" : "") + " · " + ev.eventTime +
                     (ev.candidateName ? " · " + ev.candidateName : "") +
-                    (ev.meetingUrl ? "
-📹 " + ev.meetingUrl : ""),
+                    (ev.meetingUrl ? " · " + ev.meetingUrl : ""),
               icon: "/favicon.ico",
               tag: key,
             });
@@ -2395,6 +2404,189 @@ function EventModal({ event, prefillDate, candidates, onClose, onSave, onDelete 
 }
 
 
+function EvaluacionesView() {
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const EVAL_URL = "https://nkujan.github.io/reclutaplus/evaluar.html";
+
+  const load = async () => {
+    setLoading(true);
+    const data = await db.get("evaluation_results", "order=created_at.desc");
+    setResults((data||[]).map(r => ({
+      id:r.id, name:r.candidate_name, email:r.candidate_email,
+      cargo:r.cargo, type:r.evaluation_type,
+      total:r.total_questions, answered:r.answered_questions,
+      responses:r.responses, createdAt:r.created_at,
+    })));
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(EVAL_URL).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
+  if (selected) return (
+    <div className="fade-in">
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}>
+        <button onClick={() => setSelected(null)}
+          style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 14px",
+            cursor:"pointer", fontSize:14, color:C.text, fontFamily:"inherit", display:"flex", alignItems:"center", gap:6 }}>
+          <ChevronLeft size={16}/> Volver
+        </button>
+        <div>
+          <h1 style={{ fontSize:20, fontWeight:700, color:C.text }}>{selected.name}</h1>
+          <p style={{ color:C.muted, fontSize:13 }}>{selected.email} · {selected.type} · {new Date(selected.createdAt).toLocaleDateString("es-EC")}</p>
+        </div>
+      </div>
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16 }}>
+          {[["Respondidas",selected.answered,C.accent],["Total",selected.total,C.text],
+            [Math.round((selected.answered/selected.total)*100)+"%","Completado",selected.answered===selected.total?C.success:C.warning]
+          ].map(([val,lbl,col],i) => (
+            <div key={i} style={{ textAlign:"center", padding:"12px 0" }}>
+              <div style={{ fontSize:28, fontWeight:700, color:col }}>{val}</div>
+              <div style={{ fontSize:12, color:C.muted }}>{lbl}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card style={{ padding:0, overflow:"hidden" }}>
+        <div style={{ padding:"14px 20px", borderBottom:`1px solid ${C.border}`, fontWeight:600, fontSize:14, color:C.text }}>
+          Respuestas detalladas — {selected.name}
+        </div>
+        <div style={{ maxHeight:540, overflowY:"auto" }}>
+          {(Array.isArray(selected.responses)?selected.responses:[]).map((r,i) => (
+            <div key={i} style={{ padding:"12px 20px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:12, alignItems:"flex-start" }}>
+              <div style={{ width:28, height:28, borderRadius:7, background:`${C.accent}15`, color:C.accent,
+                display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, flexShrink:0 }}>
+                {r.n}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13.5, color:C.text, marginBottom:6, lineHeight:1.5 }}>{r.question}</div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {(r.opts||[]).map((o,j) => (
+                    <span key={j} style={{ padding:"3px 10px", borderRadius:6, fontSize:12, fontWeight:500,
+                      background:j===r.answer_index?C.accent:C.bg,
+                      color:j===r.answer_index?"#fff":C.muted,
+                      border:`1px solid ${j===r.answer_index?C.accent:C.border}` }}>
+                      {"abc"[j]}) {o}
+                    </span>
+                  ))}
+                  {r.answer_index===null && (
+                    <span style={{ padding:"3px 10px", borderRadius:6, fontSize:12, color:C.danger, background:C.dangerL }}>Sin responder</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      <div style={{ marginBottom:24 }}>
+        <h1 style={{ fontSize:24, fontWeight:700, color:C.text, marginBottom:4 }}>Evaluaciones</h1>
+        <p style={{ color:C.muted, fontSize:14 }}>Gestiona y revisa las evaluaciones 16PF de tus candidatos</p>
+      </div>
+      <Card style={{ marginBottom:20, background:C.infoL, border:`1.5px solid ${C.info}30` }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:C.info, marginBottom:6, display:"flex", alignItems:"center", gap:6 }}>
+              <LinkIcon size={14}/> Link para enviar a candidatos — Cuestionario 16PF (187 preguntas)
+            </div>
+            <div style={{ fontSize:12, color:"#1E40AF", background:"rgba(255,255,255,.7)", borderRadius:7,
+              padding:"6px 11px", fontFamily:"monospace", wordBreak:"break-all" }}>
+              {EVAL_URL}
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={copyLink}
+              style={{ background:copied?C.success:C.info, color:"#fff", border:"none", borderRadius:8,
+                padding:"8px 14px", cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:"inherit",
+                display:"flex", alignItems:"center", gap:5 }}>
+              {copied?<><Check size={13}/> ¡Copiado!</>:<><LinkIcon size={13}/> Copiar</>}
+            </button>
+            <a href={EVAL_URL} target="_blank" rel="noopener noreferrer"
+              style={{ background:"#fff", color:C.info, border:`1px solid ${C.info}40`, borderRadius:8,
+                padding:"8px 14px", fontSize:13, fontWeight:600, textDecoration:"none",
+                display:"flex", alignItems:"center", gap:5 }}>
+              <ExternalLink size={13}/> Ver
+            </a>
+          </div>
+        </div>
+      </Card>
+      {loading ? (
+        <Card style={{ textAlign:"center", padding:48 }}><Spinner size={30}/><p style={{ color:C.muted, marginTop:12 }}>Cargando...</p></Card>
+      ) : results.length===0 ? (
+        <Card style={{ textAlign:"center", padding:52 }}>
+          <ClipboardCheck size={48} color={C.border} style={{ display:"block", margin:"0 auto 14px" }}/>
+          <h3 style={{ color:C.text, marginBottom:7 }}>Sin evaluaciones aún</h3>
+          <p style={{ color:C.muted, fontSize:13 }}>Cuando los candidatos completen el formulario, aparecerán aquí.</p>
+        </Card>
+      ) : (
+        <Card style={{ padding:0, overflow:"hidden" }}>
+          <div style={{ padding:"13px 20px", borderBottom:`1px solid ${C.border}`,
+            display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <span style={{ fontWeight:600, fontSize:14, color:C.text }}>{results.length} evaluación{results.length!==1?"es":""} recibida{results.length!==1?"s":""}</span>
+            <Btn variant="secondary" size="sm" onClick={load}><RefreshCw size={13}/> Actualizar</Btn>
+          </div>
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr style={{ background:C.bg, borderBottom:`1px solid ${C.border}` }}>
+                  {["Candidato","Correo","Cargo","Completado","Fecha",""].map(h=>(
+                    <th key={h} style={{ padding:"9px 16px", textAlign:"left", fontSize:11,
+                      fontWeight:600, color:C.muted, textTransform:"uppercase", letterSpacing:"0.04em" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {results.map(r => {
+                  const pct=Math.round((r.answered/r.total)*100);
+                  const pCol=pct>=90?C.success:pct>=70?C.warning:C.danger;
+                  return (
+                    <tr key={r.id} className="rp-row" style={{ borderBottom:`1px solid ${C.border}` }}>
+                      <td style={{ padding:"11px 16px", fontWeight:600, fontSize:14, color:C.text }}>{r.name}</td>
+                      <td style={{ padding:"11px 16px", fontSize:13, color:C.muted }}>{r.email}</td>
+                      <td style={{ padding:"11px 16px", fontSize:13, color:C.muted }}>{r.cargo||"—"}</td>
+                      <td style={{ padding:"11px 16px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <div style={{ flex:1, background:C.border, borderRadius:99, height:5, minWidth:60 }}>
+                            <div style={{ width:pct+"%", height:5, background:pCol, borderRadius:99 }}/>
+                          </div>
+                          <span style={{ fontSize:12, fontWeight:600, color:pCol, minWidth:32 }}>{pct}%</span>
+                        </div>
+                      </td>
+                      <td style={{ padding:"11px 16px", fontSize:12, color:C.muted }}>
+                        {new Date(r.createdAt).toLocaleDateString("es-EC")}
+                      </td>
+                      <td style={{ padding:"11px 16px" }}>
+                        <button onClick={() => setSelected(r)}
+                          style={{ background:`${C.accent}15`, color:C.accent, border:"none",
+                            borderRadius:7, padding:"6px 11px", cursor:"pointer", fontSize:12,
+                            fontWeight:600, fontFamily:"inherit", display:"inline-flex", alignItems:"center", gap:4 }}>
+                          <Eye size={13}/> Ver respuestas
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function SettingsView({ user, candidates, companies, formSubmissions }) {
   const [old, setOld] = useState(""); const [neo, setNeo] = useState(""); const [conf, setConf] = useState("");
   const [msg, setMsg] = useState(null);
@@ -2454,6 +2646,7 @@ function AdminApp({ user, view, setView, onLogout, candidates, companies, formSu
     pipeline: <PipelineView candidates={candidates} setCandidates={setCandidates} refreshCandidates={refreshCandidates} />,
     forms: <FormsView formSubmissions={formSubmissions} refreshForms={refreshForms} />,
     positionRequests: <PositionRequestsView />,
+    evaluaciones: <EvaluacionesView />,
     companies: <CompaniesView companies={companies} refreshCompanies={refreshCompanies} />,
     feedback: <FeedbackView consultations={consultations} refreshConsultations={refreshConsultations} surveys={surveys} />,
     calendar: <CalendarView candidates={candidates} />,
