@@ -1893,14 +1893,37 @@ function PipelineCandidateModal({ allCandidates, currentIdx, onNavigate, onClose
 }
 
 function PipelineView({ candidates, setCandidates, refreshCandidates }) {
-  const [posFilter, setPosFilter] = useState("");
-  const [moving, setMoving] = useState(null);
-  const [modalIdx, setModalIdx] = useState(null);
+  const [modalIdx, setModalIdx]   = useState(null);
+  const [search, setSearch]       = useState("");
 
-  // All candidates in pipeline order for navigation
-  const ordered = PIPELINE_STAGES
-    .filter(s => !["Activo","En proceso"].includes(s.id))
-    .flatMap(s => candidates.filter(c => (c.status || "Nuevo") === s.id));
+  const STAGES = [
+    { id: "Nuevo",            label: "Nuevo" },
+    { id: "CV revisado",      label: "CV revisado" },
+    { id: "Pre-seleccionado", label: "Pre-seleccionado" },
+    { id: "En entrevista",    label: "En entrevista" },
+    { id: "Evaluación",       label: "Evaluación" },
+    { id: "Finalista",        label: "Finalista" },
+    { id: "Seleccionado",     label: "Seleccionado" },
+    { id: "Descartado",       label: "Descartado" },
+  ];
+
+  const filtered = search
+    ? candidates.filter(c =>
+        (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (c.position || "").toLowerCase().includes(search.toLowerCase()))
+    : candidates;
+
+  // Group by stage
+  const byStage = {};
+  STAGES.forEach(s => { byStage[s.id] = []; });
+  filtered.forEach(c => {
+    const st = c.status || "Nuevo";
+    if (byStage[st]) byStage[st].push(c);
+    else byStage["Nuevo"].push(c);
+  });
+
+  // Navigation list for modal (ordered through stages)
+  const ordered = STAGES.flatMap(s => byStage[s.id] || []);
 
   const openModal = (c) => {
     const idx = ordered.findIndex(x => x.id === c.id);
@@ -1910,140 +1933,158 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
   const handleModalUpdate = (id, patch) => {
     setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
   };
-  const positions = [...new Set(candidates.map(c => c.position).filter(Boolean))];
-  const filtered = posFilter ? candidates.filter(c => c.position === posFilter) : candidates;
-  
-  // Group candidates by status
-  const byStatus = {};
-  PIPELINE_STAGES.forEach(s => { byStatus[s.id] = []; });
-  filtered.forEach(c => {
-    const status = c.status || "Nuevo";
-    if (!byStatus[status]) byStatus[status] = [];
-    byStatus[status].push(c);
-  });
 
-  // Only show stages that have candidates OR are main stages (not legacy)
-  const visibleStages = PIPELINE_STAGES.filter(s => 
-    !["Activo", "En proceso"].includes(s.id) || byStatus[s.id]?.length > 0
-  );
+  // Totals
+  const active   = candidates.filter(c => !["Seleccionado","Descartado"].includes(c.status)).length;
+  const hired    = byStage["Seleccionado"].length;
+  const discarded = byStage["Descartado"].length;
 
-  const moveCandidate = async (candidateId, newStatus) => {
-    setMoving(candidateId);
-    try {
-      await db.update("candidates", candidateId, { status: newStatus });
-      setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: newStatus } : c));
-    } catch(e) { console.error(e); await refreshCandidates(); }
-    setMoving(null);
+  // Days since created
+  const daysAgo = (dateStr) => {
+    if (!dateStr) return null;
+    const d = Math.floor((Date.now() - new Date(dateStr)) / 86400000);
+    return d === 0 ? "Hoy" : d === 1 ? "Ayer" : d + "d";
   };
 
-  const totalActive = candidates.filter(c => !["Seleccionado","Descartado"].includes(c.status)).length;
-  const totalSelected = candidates.filter(c => c.status === "Seleccionado").length;
-  const totalDiscarded = candidates.filter(c => c.status === "Descartado").length;
-
   return (
-    <div className="fade-in">
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Pipeline de selección</h1>
-        <p style={{ color: C.muted, fontSize: 14 }}>Visualiza y mueve candidatos a través de las etapas del proceso</p>
+    <div className="fade-in" style={{ display:"flex", flexDirection:"column", height:"100%", minHeight:0 }}>
+
+      {/* ── HEADER ── */}
+      <div style={{ marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
+        <div>
+          <h1 style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:2 }}>Pipeline de selección</h1>
+          <p style={{ color:C.muted, fontSize:13 }}>
+            {active} en proceso · {hired} seleccionados · {discarded} descartados
+          </p>
+        </div>
+        {/* Search */}
+        <div style={{ position:"relative" }}>
+          <Search size={14} color={C.muted} style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)" }}/>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar candidato..."
+            style={{ paddingLeft:32, paddingRight:12, paddingTop:8, paddingBottom:8,
+              border:`1.5px solid ${C.border}`, borderRadius:8, fontSize:13,
+              color:C.text, outline:"none", background:"#fff", width:220, fontFamily:"inherit" }}
+            onFocus={e => e.target.style.borderColor=C.accent}
+            onBlur={e => e.target.style.borderColor=C.border}
+          />
+        </div>
       </div>
 
-      {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
-        {[
-          { label: "En proceso", value: totalActive, color: C.info },
-          { label: "Seleccionados", value: totalSelected, color: C.success },
-          { label: "Descartados", value: totalDiscarded, color: C.danger },
-          { label: "Total candidatos", value: candidates.length, color: C.accent },
-        ].map(s => (
-          <div key={s.label} style={{ background: C.card, borderRadius: 10, padding: "14px 18px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.06)", borderLeft: `3px solid ${s.color}` }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: C.text }}>{s.value}</div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filter */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <label style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>Filtrar por cargo:</label>
-        <select value={posFilter} onChange={e => setPosFilter(e.target.value)}
-          style={{ border: `1.5px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 13, outline: "none", color: posFilter ? C.text : C.muted }}>
-          <option value="">Todos los cargos</option>
-          {positions.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-        {filtered.length !== candidates.length && (
-          <span style={{ fontSize: 13, color: C.muted }}>Mostrando {filtered.length} de {candidates.length}</span>
-        )}
-      </div>
-
+      {/* ── KANBAN BOARD ── */}
       {candidates.length === 0 ? (
-        <div style={{ background: C.card, borderRadius: 12, padding: 56, textAlign: "center",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-          <Layers size={52} color={C.border} style={{ display: "block", margin: "0 auto 16px" }} />
-          <h3 style={{ color: C.text, marginBottom: 8 }}>Sin candidatos en el pipeline</h3>
-          <p style={{ color: C.muted, fontSize: 14 }}>Agrega candidatos en la sección "Candidatos" para verlos aquí.</p>
+        <div style={{ background:"#fff", borderRadius:12, padding:56, textAlign:"center", border:`1px solid ${C.border}` }}>
+          <Layers size={48} color={C.border} style={{ display:"block", margin:"0 auto 14px" }}/>
+          <h3 style={{ color:C.text, marginBottom:8, fontSize:16 }}>Pipeline vacío</h3>
+          <p style={{ color:C.muted, fontSize:14 }}>Agrega candidatos para verlos aquí y moverlos entre etapas.</p>
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16, alignItems: "flex-start" }}>
-          {visibleStages.map(stage => {
-            const stageCandidates = byStatus[stage.id] || [];
+        <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:16, flex:1, minHeight:0, alignItems:"flex-start" }}>
+          {STAGES.map(stage => {
+            const cards = byStage[stage.id] || [];
+            const isEnd = stage.id === "Seleccionado" || stage.id === "Descartado";
             return (
-              <div key={stage.id} style={{ minWidth: 220, maxWidth: 240, flexShrink: 0, background: "#F8FAFF",
-                borderRadius: 12, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+              <div key={stage.id}
+                style={{ minWidth:220, width:220, flexShrink:0, display:"flex",
+                  flexDirection:"column", maxHeight:"calc(100vh - 220px)" }}>
+
                 {/* Column header */}
-                <div style={{ padding: "12px 14px", background: stage.bg,
-                  borderBottom: `2px solid ${stage.color}40`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: stage.color }}>{stage.label}</span>
-                  <span style={{ background: stage.color, color: "#fff", borderRadius: 99, padding: "1px 8px",
-                    fontSize: 12, fontWeight: 600 }}>{stageCandidates.length}</span>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                  marginBottom:8, padding:"0 4px" }}>
+                  <span style={{ fontSize:12, fontWeight:600, color: isEnd ? C.muted : C.text,
+                    letterSpacing:"0.01em" }}>
+                    {stage.label}
+                  </span>
+                  <span style={{ background: cards.length===0 ? C.border : isEnd ? C.muted : C.accent,
+                    color:"#fff", borderRadius:99, padding:"1px 7px",
+                    fontSize:11, fontWeight:700, minWidth:18, textAlign:"center" }}>
+                    {cards.length}
+                  </span>
                 </div>
-                {/* Cards */}
-                <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8, minHeight: 80 }}>
-                  {stageCandidates.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "20px 8px", color: C.muted, fontSize: 12 }}>Sin candidatos</div>
-                  ) : stageCandidates.map(c => (
-                    <div key={c.id}
-                      onClick={() => openModal(c)}
-                      style={{ background: C.card, borderRadius: 10, padding: "12px 14px",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${C.border}`,
-                        opacity: moving === c.id ? 0.5 : 1, cursor: "pointer", transition: "all .15s" }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.1)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "translateY(0)"; }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                        <div style={{ width: 30, height: 30, borderRadius: "50%", background: `linear-gradient(135deg,${C.accent},${C.primary})`,
-                          color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-                          fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-                          {(c.name || "?")[0].toUpperCase()}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontWeight: 600, color: C.text, fontSize: 13, overflow: "hidden",
-                            textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
-                          {c.position && <div style={{ color: C.muted, fontSize: 11 }}>{c.position}</div>}
-                        </div>
-                        <div style={{ fontSize: 10, color: C.accent, opacity: 0.6 }}>Ver →</div>
-                      </div>
-                      {c.cvUrl && <div style={{ fontSize: 10, color: C.success, marginBottom: 4, display:"flex", alignItems:"center", gap:3 }}><span>📎</span> CV adjunto</div>}
-                      {/* Move buttons */}
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                        {visibleStages.filter(s => s.id !== stage.id && !["Activo","En proceso"].includes(s.id)).slice(0, 4).map(s => (
-                          <button key={s.id} onClick={() => moveCandidate(c.id, s.id)} disabled={moving === c.id}
-                            title={`Mover a: ${s.label}`}
-                            style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, border: `1px solid ${s.color}40`,
-                              background: s.bg, color: s.color, cursor: "pointer", fontWeight: 500,
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 90 }}>
-                            → {s.label.replace("✅ ","").replace("❌ ","")}
-                          </button>
-                        ))}
-                      </div>
+
+                {/* Column body */}
+                <div style={{ background:"#F8F9FA", borderRadius:10, padding:8,
+                  flex:1, overflowY:"auto", minHeight:80,
+                  border:`1px solid #EBEBEB` }}>
+                  {cards.length === 0 ? (
+                    <div style={{ textAlign:"center", padding:"24px 8px",
+                      color:"#CBD5E1", fontSize:12, lineHeight:1.5 }}>
+                      Sin candidatos
                     </div>
-                  ))}
+                  ) : (
+                    cards.map(c => (
+                      <div key={c.id} onClick={() => openModal(c)}
+                        style={{ background:"#fff", borderRadius:8, padding:"11px 12px",
+                          marginBottom:6, border:"1px solid #EBEBEB",
+                          cursor:"pointer", transition:"all .15s",
+                          boxShadow:"0 1px 2px rgba(0,0,0,0.04)" }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.borderColor = C.accent;
+                          e.currentTarget.style.boxShadow = "0 3px 10px rgba(0,0,0,0.09)";
+                          e.currentTarget.style.transform = "translateY(-1px)";
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.borderColor = "#EBEBEB";
+                          e.currentTarget.style.boxShadow = "0 1px 2px rgba(0,0,0,0.04)";
+                          e.currentTarget.style.transform = "translateY(0)";
+                        }}>
+
+                        {/* Card: avatar + name */}
+                        <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:6 }}>
+                          <div style={{ width:28, height:28, borderRadius:"50%",
+                            background:`linear-gradient(135deg,${C.accent},${C.primary})`,
+                            color:"#fff", display:"flex", alignItems:"center",
+                            justifyContent:"center", fontWeight:700,
+                            fontSize:12, flexShrink:0 }}>
+                            {(c.name||"?")[0].toUpperCase()}
+                          </div>
+                          <div style={{ minWidth:0, flex:1 }}>
+                            <div style={{ fontWeight:600, color:C.text, fontSize:13,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {c.name}
+                            </div>
+                            {c.position && (
+                              <div style={{ color:C.muted, fontSize:11, overflow:"hidden",
+                                textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                {c.position}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card footer: meta info */}
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          {c.cvUrl && (
+                            <span style={{ fontSize:10, color:C.success, fontWeight:600,
+                              background:"#F0FDF4", borderRadius:4, padding:"1px 6px",
+                              border:"1px solid #BBF7D0" }}>
+                              CV
+                            </span>
+                          )}
+                          {c.email && (
+                            <span style={{ fontSize:10, color:C.muted, fontWeight:500,
+                              background:"#F8F9FA", borderRadius:4, padding:"1px 6px",
+                              border:"1px solid #EBEBEB" }}>
+                              ✉
+                            </span>
+                          )}
+                          {c.createdAt && (
+                            <span style={{ fontSize:10, color:C.muted, marginLeft:"auto" }}>
+                              {daysAgo(c.createdAt)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       )}
-      {/* ── PIPELINE CANDIDATE MODAL ── */}
+
+      {/* ── MODAL ── */}
       {modalIdx !== null && ordered[modalIdx] && (
         <PipelineCandidateModal
           allCandidates={ordered}
@@ -2057,9 +2098,7 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   FORMS VIEW
-═══════════════════════════════════════════════════════════ */
+
 function FormsView({ formSubmissions, refreshForms }) {
   const [selected, setSelected] = useState(null);
 
