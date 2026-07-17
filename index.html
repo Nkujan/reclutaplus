@@ -422,6 +422,29 @@ const db = {
 /* WhatsApp de la consultora */
 const WA_NUMBER = "593979954126";
 
+const LATAM_CODES = [
+  { code: "593", flag: "EC", name: "Ecuador",          fmt: "+593" },
+  { code: "57",  flag: "CO", name: "Colombia",         fmt: "+57"  },
+  { code: "51",  flag: "PE", name: "Peru",             fmt: "+51"  },
+  { code: "56",  flag: "CL", name: "Chile",            fmt: "+56"  },
+  { code: "54",  flag: "AR", name: "Argentina",        fmt: "+54"  },
+  { code: "52",  flag: "MX", name: "Mexico",           fmt: "+52"  },
+  { code: "58",  flag: "VE", name: "Venezuela",        fmt: "+58"  },
+  { code: "591", flag: "BO", name: "Bolivia",          fmt: "+591" },
+  { code: "595", flag: "PY", name: "Paraguay",         fmt: "+595" },
+  { code: "598", flag: "UY", name: "Uruguay",          fmt: "+598" },
+  { code: "55",  flag: "BR", name: "Brasil",           fmt: "+55"  },
+  { code: "507", flag: "PA", name: "Panama",           fmt: "+507" },
+  { code: "506", flag: "CR", name: "Costa Rica",       fmt: "+506" },
+  { code: "502", flag: "GT", name: "Guatemala",        fmt: "+502" },
+  { code: "504", flag: "HN", name: "Honduras",         fmt: "+504" },
+  { code: "503", flag: "SV", name: "El Salvador",      fmt: "+503" },
+  { code: "505", flag: "NI", name: "Nicaragua",        fmt: "+505" },
+  { code: "809", flag: "DO", name: "R. Dominicana",    fmt: "+1809"},
+  { code: "53",  flag: "CU", name: "Cuba",             fmt: "+53"  },
+  { code: "1",   flag: "US", name: "EE.UU / Canada",   fmt: "+1"   },
+];
+
 const EVENT_TYPES = [
   { id: "Entrevista", color: "#2563EB", bg: "#DBEAFE" },
   { id: "Evaluación", color: "#7C3AED", bg: "#EDE9FE" },
@@ -1231,6 +1254,68 @@ function CandidateDetailModal({ candidate: c, onClose, onViewCV, onDownloadCV })
   );
 }
 
+
+/* ── PHONE FIELD COMPONENT ── */
+function PhoneField({ value, onChange }) {
+  const parsePhone = (v) => {
+    if (!v) return { code: "593", num: "" };
+    const found = LATAM_CODES.find(c => v.startsWith(c.code));
+    return found
+      ? { code: found.code, num: v.slice(found.code.length) }
+      : { code: "593", num: v };
+  };
+  const parsed = parsePhone(value);
+  const [code, setCode] = React.useState(parsed.code);
+  const [num, setNum] = React.useState(parsed.num);
+
+  React.useEffect(() => {
+    const p = parsePhone(value);
+    setCode(p.code);
+    setNum(p.num);
+  }, [value]);
+
+  const update = (newCode, newNum) => {
+    const digits = newNum.replace(/\D/g, "");
+    onChange(digits ? newCode + digits : "");
+  };
+
+  const country = LATAM_CODES.find(c => c.code === code) || LATAM_CODES[0];
+
+  return (
+    <div>
+      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151",
+        textTransform:"uppercase", letterSpacing:"0.04em", marginBottom:5 }}>Teléfono</label>
+      <div style={{ display:"flex", gap:6 }}>
+        <select value={code}
+          onChange={e => { setCode(e.target.value); update(e.target.value, num); }}
+          style={{ border:`1.5px solid ${C.border}`, borderRadius:8, padding:"9px 8px",
+            fontSize:13, color:C.text, background:"#fff", outline:"none",
+            cursor:"pointer", flexShrink:0, fontFamily:"inherit", minWidth:130 }}>
+          {LATAM_CODES.map(c => (
+            <option key={c.code} value={c.code}>{c.name} ({c.fmt})</option>
+          ))}
+        </select>
+        <input
+          type="tel"
+          value={num}
+          onChange={e => { setNum(e.target.value); update(code, e.target.value); }}
+          placeholder="Ej: 987654321"
+          style={{ flex:1, border:`1.5px solid ${C.border}`, borderRadius:8,
+            padding:"9px 12px", fontSize:14, color:C.text, outline:"none",
+            fontFamily:"inherit" }}
+          onFocus={e => e.target.style.borderColor = C.accent}
+          onBlur={e => e.target.style.borderColor = C.border}
+        />
+      </div>
+      {num && (
+        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+          Numero completo: +{code} {num.replace(/\D/g,"")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CandidateModal({ open, onClose, editing, onSave, saving }) {
   const blank = { name: "", email: "", phone: "", position: "", status: "Nuevo", skills: "", notes: "", cvFileName: "", cvUrl: "", cvDataUri: "", cvText: "" };
   const [form, setForm] = useState(blank);
@@ -1262,7 +1347,7 @@ function CandidateModal({ open, onClose, editing, onSave, saving }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Inp label="Nombre completo" required value={form.name} onChange={set("name")} />
           <Inp label="Correo electrónico" type="email" value={form.email} onChange={set("email")} />
-          <Inp label="Teléfono" value={form.phone} onChange={set("phone")} />
+          <PhoneField value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} />
           <Inp label="Cargo al que aplica" value={form.position} onChange={set("position")} />
         </div>
         <Sel label="Estado del proceso" value={form.status} onChange={set("status")} options={STATUS_OPTS} />
@@ -2241,20 +2326,37 @@ function EventModal({ event, prefillDate, candidates, onClose, onSave, onDelete 
   /* Abre WhatsApp con detalles del evento */
   const sendWhatsApp = () => {
     const cand = candidates.find(c => c.id === form.candidateId);
+
+    // Determine destination number
+    let destPhone = WA_NUMBER; // default: Norma's business number
+    if (cand && cand.phone) {
+      // Use candidate's phone — strip everything except digits
+      const cleaned = cand.phone.replace(/[^0-9]/g, "");
+      if (cleaned.length >= 7) destPhone = cleaned;
+    } else if (cand) {
+      alert("El candidato " + cand.name + " no tiene numero de telefono registrado.\nAgregalo en el modulo de Candidatos primero.");
+      return;
+    }
+
+    // Build professional message (no emojis that can break on some devices)
     const dateStr = form.eventDate
-      ? new Date(form.eventDate + "T12:00:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long" })
+      ? new Date(form.eventDate + "T12:00:00").toLocaleDateString("es-EC",
+          { weekday: "long", day: "numeric", month: "long", year: "numeric" })
       : "";
     const timeStr = form.eventTime ? " a las " + form.eventTime : "";
-    const meetStr = form.meetingUrl ? "\n\n📹 Link de videollamada:\n" + form.meetingUrl : "";
+    const meetLine = form.meetingUrl ? "\nLink de reunion: " + form.meetingUrl : "";
+    const notesLine = form.notes ? "\nDetalles: " + form.notes : "";
+    const candName = cand ? cand.name : "";
+
     const text = encodeURIComponent(
-      "Hola" + (cand ? " " + cand.name : "") + ",\n\n" +
-      "Te confirmamos tu " + form.eventType.toLowerCase() + " programada para el " + dateStr + timeStr + ".\n\n" +
-      "📌 " + form.title +
-      (form.notes ? "\n\n📝 Detalles:\n" + form.notes : "") +
-      meetStr +
-      "\n\n— Norma Kuján Consultoría & Coaching"
+      "Estimado/a " + candName + ",\n\n" +
+      "Le confirmamos su " + form.eventType.toLowerCase() + " programada para el " + dateStr + timeStr + "." +
+      (form.title && form.title !== form.eventType ? "\nAsunto: " + form.title : "") +
+      meetLine +
+      notesLine +
+      "\n\nAtentamente,\nNorma Kujan Consultoria & Coaching"
     );
-    window.open("https://wa.me/" + WA_NUMBER + "?text=" + text, "_blank");
+    window.open("https://wa.me/" + destPhone + "?text=" + text, "_blank");
   };
 
   const save = async () => {
