@@ -767,17 +767,7 @@ const STATUS_OPTS = ["Nuevo", "CV revisado", "Pre-seleccionado", "En entrevista"
 const STATUS_LEGACY = ["Activo", "En proceso"]; // soporte para datos existentes
 const STATUS_COLOR = { Nuevo:"neutral", "CV revisado":"info", "Pre-seleccionado":"info", "En entrevista":"warning", "Evaluación":"warning", Finalista:"teal", Seleccionado:"success", Descartado:"danger", Activo:"success", "En proceso":"info" };
 
-function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
-  const [search, setSearch] = useState("");
-  const [posFilter, setPosFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [cvModal, setCvModal] = useState(null); // { url, fileName }
-  const [detailCandidate, setDetailCandidate] = useState(null); // candidate to view
-
-  const getSignedUrl = async (path) => {
+const getSignedUrl = async (path) => {
     // If it's a base64 data URI (legacy), return directly
     if (path.startsWith("data:")) return path;
     // If it's a full URL (old Supabase public URL), return directly
@@ -793,6 +783,17 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
       return data.signedURL ? `${SB_URL}/storage/v1${data.signedURL}` : null;
     } catch(e) { console.error(e); return null; }
   };
+
+function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
+  const [search, setSearch] = useState("");
+  const [posFilter, setPosFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [cvModal, setCvModal] = useState(null); // { url, fileName }
+  const [detailCandidate, setDetailCandidate] = useState(null); // candidate to view
+
 
   const viewCV = async (cvUrl, fileName) => {
     if (!cvUrl) return;
@@ -1801,12 +1802,20 @@ function PipelineCandidateModal({ allCandidates, currentIdx, onNavigate, onClose
               </div>
               {c.cvUrl && (
                 <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={() => viewCV(c.cvUrl, c.cvFileName)}
+                  <button onClick={async () => {
+                      let url = cvSrc;
+                      if (!url && c.cvUrl) url = c.cvUrl.startsWith("data:") ? cvSrc : await getSignedUrl(c.cvUrl);
+                      if (url) window.open(url, "_blank");
+                    }}
                     style={{ background:`${C.info}15`, color:C.info, border:"none", borderRadius:7,
                       padding:"5px 12px", cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit" }}>
                     Nueva pestaña
                   </button>
-                  <button onClick={() => downloadCV(c.cvUrl, c.cvFileName)}
+                  <button onClick={async () => {
+                      let url = cvSrc;
+                      if (!url && c.cvUrl) url = c.cvUrl.startsWith("data:") ? cvSrc : await getSignedUrl(c.cvUrl);
+                      if (url) { const a = document.createElement("a"); a.href=url; a.download=c.cvFileName||"CV.pdf"; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+                    }}
                     style={{ background:`${C.accent}15`, color:C.accent, border:"none", borderRadius:7,
                       padding:"5px 12px", cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"inherit" }}>
                     Descargar
@@ -1893,8 +1902,9 @@ function PipelineCandidateModal({ allCandidates, currentIdx, onNavigate, onClose
 }
 
 function PipelineView({ candidates, setCandidates, refreshCandidates }) {
-  const [modalIdx, setModalIdx]   = useState(null);
-  const [search, setSearch]       = useState("");
+  const [modalIdx, setModalIdx]     = useState(null);
+  const [modalSnapshot, setModalSnapshot] = useState(null);
+  const [search, setSearch]         = useState("");
 
   const STAGES = [
     { id: "Nuevo",            label: "Nuevo" },
@@ -1926,7 +1936,9 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
   const ordered = STAGES.flatMap(s => byStage[s.id] || []);
 
   const openModal = (c) => {
-    const idx = ordered.findIndex(x => x.id === c.id);
+    const snap = [...ordered];          // freeze list at open time
+    const idx  = snap.findIndex(x => x.id === c.id);
+    setModalSnapshot(snap);
     setModalIdx(idx >= 0 ? idx : 0);
   };
 
@@ -2085,13 +2097,20 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
       )}
 
       {/* ── MODAL ── */}
-      {modalIdx !== null && ordered[modalIdx] && (
+      {modalIdx !== null && modalSnapshot && modalSnapshot[modalIdx] && (
         <PipelineCandidateModal
-          allCandidates={ordered}
+          allCandidates={modalSnapshot}
           currentIdx={modalIdx}
           onNavigate={idx => setModalIdx(idx)}
-          onClose={() => setModalIdx(null)}
-          onUpdated={handleModalUpdate}
+          onClose={() => { setModalIdx(null); setModalSnapshot(null); }}
+          onUpdated={(id, patch) => {
+            handleModalUpdate(id, patch);
+            // also patch snapshot so modal shows updated data
+            setModalSnapshot(prev => prev
+              ? prev.map(c => c.id === id ? { ...c, ...patch } : c)
+              : prev
+            );
+          }}
         />
       )}
     </div>
