@@ -2735,15 +2735,18 @@ function CalendarView({ candidates }) {
 
   return (
     <div className="fade-in">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+        alignItems: IS_MOBILE ? "flex-start" : "center",
+        flexDirection: IS_MOBILE ? "column" : "row",
+        gap: IS_MOBILE ? 10 : 0, marginBottom: IS_MOBILE ? 16 : 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Calendario y alertas</h1>
-          <p style={{ color: C.muted, fontSize: 14 }}>Agenda entrevistas, evaluaciones y citas del proceso de selección</p>
+          <h1 style={{ fontSize: IS_MOBILE ? 20 : 24, fontWeight: 700, color: C.text, marginBottom: 4 }}>Calendario y alertas</h1>
+          <p style={{ color: C.muted, fontSize: IS_MOBILE ? 13 : 14 }}>Agenda entrevistas, evaluaciones y citas del proceso de selección</p>
         </div>
         <Btn onClick={() => openNew(null)}><Plus size={16} /> Nuevo evento</Btn>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 20, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: IS_MOBILE ? "1fr" : "1fr 280px", gap: IS_MOBILE ? 14 : 20, alignItems: "start" }}>
         <Card style={{ padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <button onClick={() => setCursor(new Date(year, month - 1, 1))} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: 7, cursor: "pointer", display: "flex" }}><ChevronLeft size={16} /></button>
