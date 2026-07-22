@@ -500,7 +500,13 @@ const GLOBAL_CSS = `
   @media(max-width:540px){
     .desktop-sidebar{display:none!important}
     .mobile-nav{display:flex!important}
-    .main-pad{margin-left:0!important;padding:16px 12px 72px!important}
+    .main-pad{margin-left:0!important;padding:14px 12px 76px!important;overflow-x:hidden!important}
+    .dash-two-col{grid-template-columns:1fr!important}
+    .table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch}
+    .cal-layout{grid-template-columns:1fr!important}
+    .form-split{grid-template-columns:1fr!important}
+    .pipeline-board{overflow-x:auto!important;-webkit-overflow-scrolling:touch}
+    .pipeline-col{min-width:200px;flex-shrink:0}
   }
   @media(min-width:541px){
     .mobile-nav{display:none!important}
@@ -806,7 +812,7 @@ function DashboardView({ candidates, companies, formSubmissions, setView }) {
         <StatCard label="Empresas activas" value={companies.length} icon={Building2} color={C.warning} onClick={() => setView("companies")} />
         <StatCard label="CVs recibidos" value={candidates.filter(c => c.cvUrl).length} icon={Briefcase} color={C.success} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="dash-two-col">
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text }}>Candidatos recientes</h3>
@@ -1017,7 +1023,7 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
       </Card>
 
       <Card style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
+        <div className="table-wrap" style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
@@ -1905,7 +1911,7 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
           <p style={{ color:C.muted,fontSize:13 }}>Agrega candidatos para verlos aquí.</p>
         </div>
       ) : (
-        <div style={{ display:"grid",gridTemplateColumns:`repeat(${PIPE.length},1fr)`,gap:8,flex:1,minHeight:0,alignItems:"start" }}>
+        <div className="pipeline-board" style={{ display:"grid",gridTemplateColumns:`repeat(${PIPE.length},1fr)`,gap:8,flex:1,minHeight:0,alignItems:"start",minWidth:`repeat(${PIPE.length},180px)` }}>
           {PIPE.map(stage=>{
             const cards=byStage[stage.id]||[];
             return (
@@ -2460,7 +2466,7 @@ function PositionRequestsView() {
         </Card>
       ) : (
         <Card style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
+          <div className="table-wrap" style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
@@ -2975,7 +2981,7 @@ function EvaluacionesView() {
             </span>
             <Btn variant="secondary" size="sm" onClick={load}><RefreshCw size={13}/> Actualizar</Btn>
           </div>
-          <div style={{ overflowX:"auto" }}>
+          <div className="table-wrap" style={{ overflowX:"auto" }}>
             <table style={{ width:"100%",borderCollapse:"collapse" }}>
               <thead>
                 <tr style={{ background:C.bg,borderBottom:`1px solid ${C.border}` }}>
