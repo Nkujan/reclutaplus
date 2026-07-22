@@ -1079,7 +1079,7 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
         </div>
       ) : (
         /* ── DESKTOP: table ── */
-        
+        <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
@@ -1140,6 +1140,7 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
             </tbody>
           </table>
         </div>
+      )}
       </Card>
 
       <CandidateModal open={showModal} onClose={() => setShowModal(false)} editing={editing} onSave={handleSave} saving={saving} />
