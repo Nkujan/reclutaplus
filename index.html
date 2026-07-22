@@ -482,6 +482,8 @@ const C = {
   warning: "#D97706", warningL: "#FEF3C7", info: "#2563EB", infoL: "#DBEAFE", sideText: "#94A3B8",
 };
 
+const IS_MOBILE = typeof window !== "undefined" && window.innerWidth <= 540;
+
 const GLOBAL_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
@@ -500,7 +502,7 @@ const GLOBAL_CSS = `
   @media(max-width:540px){
     .desktop-sidebar{display:none!important}
     .mobile-nav{display:flex!important}
-    .main-pad{margin-left:0!important;padding:14px 12px 76px!important;overflow-x:hidden!important}
+    .main-pad{margin-left:0!important;padding:14px 12px 76px!important;max-width:100vw}
     .dash-two-col{grid-template-columns:1fr!important}
     .table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch}
     .cal-layout{grid-template-columns:1fr!important}
@@ -812,7 +814,7 @@ function DashboardView({ candidates, companies, formSubmissions, setView }) {
         <StatCard label="Empresas activas" value={companies.length} icon={Building2} color={C.warning} onClick={() => setView("companies")} />
         <StatCard label="CVs recibidos" value={candidates.filter(c => c.cvUrl).length} icon={Briefcase} color={C.success} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="dash-two-col">
+      <div style={{ display: "grid", gridTemplateColumns: IS_MOBILE ? "1fr" : "1fr 1fr", gap: 16 }}>
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text }}>Candidatos recientes</h3>
@@ -1023,7 +1025,61 @@ function CandidatesView({ candidates, setCandidates, refreshCandidates }) {
       </Card>
 
       <Card style={{ padding: 0, overflow: "hidden" }}>
-        <div className="table-wrap" style={{ overflowX: "auto" }}>
+        {IS_MOBILE ? (
+        /* ── MOBILE: candidate cards ── */
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {filtered.length===0 ? (
+            <div style={{ textAlign:"center", padding:48, color:C.muted }}>
+              <Users size={40} color={C.border} style={{ display:"block", margin:"0 auto 12px" }}/>
+              Sin candidatos
+            </div>
+          ) : filtered.map(c => (
+            <div key={c.id}
+              style={{ background:"#fff", borderRadius:12, padding:"14px 16px",
+                border:"1px solid #EBEBEB", boxShadow:"0 1px 3px rgba(0,0,0,0.05)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+                <div style={{ width:42, height:42, borderRadius:"50%", flexShrink:0,
+                  background:`linear-gradient(135deg,${C.accent},${C.primary})`,
+                  color:"#fff", display:"flex", alignItems:"center",
+                  justifyContent:"center", fontWeight:700, fontSize:16 }}>
+                  {(c.name||"?")[0].toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:15, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name}</div>
+                  <div style={{ color:C.muted, fontSize:13 }}>{c.position||"Sin cargo"}</div>
+                </div>
+                <Badge color={STATUS_COLOR[c.status]||"neutral"}>{c.status||"Nuevo"}</Badge>
+              </div>
+              {c.email && <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>✉ {c.email}</div>}
+              {c.phone && <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>📞 {c.phone}</div>}
+              <div style={{ display:"flex", gap:8, marginTop:8, paddingTop:10, borderTop:"1px solid #F0F0F0" }}>
+                {c.cvUrl && (
+                  <button onClick={()=>viewCV(c.cvUrl, c.cvFileName)}
+                    style={{ flex:1, padding:"8px", background:`${C.accent}12`, color:C.accent,
+                      border:`1px solid ${C.accent}25`, borderRadius:8, cursor:"pointer",
+                      fontSize:13, fontWeight:600, fontFamily:"inherit" }}>
+                    Ver CV
+                  </button>
+                )}
+                <button onClick={()=>{ setEditing(c); setShowModal(true); }}
+                  style={{ flex:1, padding:"8px", background:`${C.info}12`, color:C.info,
+                    border:`1px solid ${C.info}25`, borderRadius:8, cursor:"pointer",
+                    fontSize:13, fontWeight:600, fontFamily:"inherit" }}>
+                  Editar
+                </button>
+                <button onClick={()=>setDetailCandidate(c)}
+                  style={{ flex:1, padding:"8px", background:`${C.success}12`, color:C.success,
+                    border:`1px solid ${C.success}25`, borderRadius:8, cursor:"pointer",
+                    fontSize:13, fontWeight:600, fontFamily:"inherit" }}>
+                  Ver perfil
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* ── DESKTOP: table ── */
+        
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
@@ -1503,6 +1559,57 @@ const PIPELINE_STAGES = [
 ];
 
 
+/* ── Mobile Pipeline Stage (needs own component for useState hook) ── */
+function MobilePipelineStage({ stage, cards, onOpenModal }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div style={{ background:"#fff", borderRadius:12, overflow:"hidden",
+      boxShadow:"0 1px 3px rgba(0,0,0,0.06)", border:"1px solid #EBEBEB" }}>
+      <div onClick={() => setOpen(v=>!v)}
+        style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"12px 16px", cursor:"pointer",
+          borderBottom: open && cards.length>0 ? "1px solid #F0F0F0" : "none" }}>
+        <span style={{ fontWeight:600, fontSize:14, color:"#0F172A" }}>{stage.id}</span>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ background:cards.length>0?"#0D9488":"#E2E8F0",
+            color:cards.length>0?"#fff":"#64748B", borderRadius:99,
+            padding:"2px 9px", fontSize:12, fontWeight:700 }}>{cards.length}</span>
+          <span style={{ color:"#64748B", fontSize:12 }}>{open?"▲":"▼"}</span>
+        </div>
+      </div>
+      {open && (
+        <div style={{ padding: cards.length>0 ? "8px" : "0" }}>
+          {cards.length===0 ? (
+            <div style={{ padding:"12px 16px", color:"#CBD5E1", fontSize:13, textAlign:"center" }}>Sin candidatos</div>
+          ) : cards.map(c=>(
+            <div key={c.id} onClick={()=>onOpenModal(c)}
+              style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 8px",
+                borderRadius:10, cursor:"pointer", marginBottom:4, background:"#FAFBFF" }}>
+              <div style={{ width:36, height:36, borderRadius:"50%", flexShrink:0,
+                background:"linear-gradient(135deg,#0D9488,#1E3A5F)",
+                color:"#fff", display:"flex", alignItems:"center",
+                justifyContent:"center", fontWeight:700, fontSize:14 }}>
+                {(c.name||"?")[0].toUpperCase()}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:600, color:"#0F172A", fontSize:14,
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name}</div>
+                <div style={{ color:"#64748B", fontSize:12 }}>{c.position||"Sin cargo"}</div>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
+                {c.cvUrl&&<span style={{ fontSize:10, color:"#059669", fontWeight:700,
+                  background:"#F0FDF4", borderRadius:4, padding:"1px 6px",
+                  border:"1px solid #BBF7D0" }}>CV</span>}
+                <ChevronRight size={14} color="#64748B"/>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* helpers for 360 modal */
 function parseNotes(notes) {
   if (!notes) return {};
@@ -1541,272 +1648,315 @@ function PipelineCandidateModal({ allCandidates, currentIdx, onNavigate, onClose
   const [saving, setSaving]       = useState(false);
   const [approving, setApproving] = useState(false);
   const [toast, setToast]         = useState(null);
+  const [mobileTab, setMobileTab] = useState("perfil"); // "perfil" | "cv"
   const fd = parseNotes(c.notes);
   const sm = smartSummary(c, fd);
   const NEXT = {"Nuevo":"CV revisado","CV revisado":"Pre-seleccionado","Pre-seleccionado":"En entrevista","En entrevista":"Evaluación","Evaluación":"Finalista","Finalista":"Seleccionado"};
   const nextStage = NEXT[c.status];
   const stageInfo = PIPELINE_STAGES.find(s=>s.id===c.status)||{color:C.muted,bg:C.bg,label:c.status};
-  const showToast = (msg,t="ok") => { setToast({msg,t}); setTimeout(()=>setToast(null),2500); };
+  const showToast=(msg,t="ok")=>{setToast({msg,t});setTimeout(()=>setToast(null),2500);};
 
   useEffect(()=>{
     setNotes(c.recruiterNotes||"");
-    try{ setChecklist({cv:false,exp:false,edu:false,sal:false,dis:false,...JSON.parse(localStorage.getItem("rp_cl_"+c.id)||"{}")}); }catch{}
+    setMobileTab("perfil");
+    try{setChecklist({cv:false,exp:false,edu:false,sal:false,dis:false,...JSON.parse(localStorage.getItem("rp_cl_"+c.id)||"{}")});}catch{}
   },[c.id]);
-  useEffect(()=>{ localStorage.setItem("rp_cl_"+c.id,JSON.stringify(checklist)); },[checklist]);
+  useEffect(()=>{localStorage.setItem("rp_cl_"+c.id,JSON.stringify(checklist));},[checklist]);
   useEffect(()=>{
     setCvSrc(null);
     if(!c.cvUrl) return;
     if(c.cvUrl.startsWith("data:")){
-      try{ const[h,d]=c.cvUrl.split(","),m=h.match(/data:([^;]+)/)[1],bytes=atob(d),arr=new Uint8Array(bytes.length);
+      try{const[h,d]=c.cvUrl.split(","),m=h.match(/data:([^;]+)/)[1],bytes=atob(d),arr=new Uint8Array(bytes.length);
         for(let i=0;i<bytes.length;i++)arr[i]=bytes.charCodeAt(i);
-        setCvSrc(URL.createObjectURL(new Blob([arr],{type:m}))); }catch{}
-    } else if(c.cvUrl.startsWith("http")){
-      setCvSrc(c.cvUrl);
-    } else {
-      setCvLoad(true); getSignedUrl(c.cvUrl).then(u=>{setCvSrc(u);setCvLoad(false);}).catch(()=>setCvLoad(false));
-    }
+        setCvSrc(URL.createObjectURL(new Blob([arr],{type:m})));}catch{}
+    } else if(c.cvUrl.startsWith("http")){setCvSrc(c.cvUrl);}
+    else{setCvLoad(true);getSignedUrl(c.cvUrl).then(u=>{setCvSrc(u);setCvLoad(false);}).catch(()=>setCvLoad(false));}
   },[c.id]);
 
-  const saveNotes = async() => {
-    setSaving(true);
-    await db.update("candidates",c.id,{recruiter_notes:notes});
-    onUpdated(c.id,{recruiterNotes:notes});
-    setSaving(false); showToast("Notas guardadas");
-  };
-  const discard = async() => {
+  const saveNotes=async()=>{setSaving(true);await db.update("candidates",c.id,{recruiter_notes:notes});onUpdated(c.id,{recruiterNotes:notes});setSaving(false);showToast("Notas guardadas");};
+  const discard=async()=>{
     if(!confirm("¿Descartar a "+c.name+"?")) return;
-    setSaving(true);
-    await db.update("candidates",c.id,{status:"Descartado",recruiter_notes:notes});
-    onUpdated(c.id,{status:"Descartado",recruiterNotes:notes});
-    setSaving(false); showToast("Descartado","warn");
-    setTimeout(()=>{ if(currentIdx<total-1)onNavigate(currentIdx); else onClose(); },800);
+    setSaving(true);await db.update("candidates",c.id,{status:"Descartado",recruiter_notes:notes});
+    onUpdated(c.id,{status:"Descartado",recruiterNotes:notes});setSaving(false);showToast("Descartado","warn");
+    setTimeout(()=>{if(currentIdx<total-1)onNavigate(currentIdx);else onClose();},800);
   };
-  const approve = async() => {
-    if(!nextStage) return;
-    setApproving(true);
-    await db.update("candidates",c.id,{status:nextStage,recruiter_notes:notes});
-    onUpdated(c.id,{status:nextStage,recruiterNotes:notes});
-    setApproving(false); showToast("Movido a: "+nextStage);
-    setTimeout(()=>{ if(currentIdx<total-1)onNavigate(currentIdx+1); else onClose(); },800);
+  const approve=async()=>{
+    if(!nextStage)return;
+    setApproving(true);await db.update("candidates",c.id,{status:nextStage,recruiter_notes:notes});
+    onUpdated(c.id,{status:nextStage,recruiterNotes:notes});setApproving(false);showToast("Movido a: "+nextStage);
+    setTimeout(()=>{if(currentIdx<total-1)onNavigate(currentIdx+1);else onClose();},800);
   };
 
-  const CL = ({k,label}) => (
+  const CL=({k,label})=>(
     <label onClick={()=>setChecklist(p=>({...p,[k]:!p[k]}))}
-      style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,
+      style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,
         cursor:"pointer",background:checklist[k]?"#F0FDF4":"transparent",
-        border:`1px solid ${checklist[k]?"#BBF7D0":C.border}`,marginBottom:6,transition:"all .15s" }}>
-      <div style={{ width:18,height:18,borderRadius:5,border:`2px solid ${checklist[k]?C.success:C.border}`,
+        border:`1px solid ${checklist[k]?"#BBF7D0":C.border}`,marginBottom:6,transition:"all .15s"}}>
+      <div style={{width:18,height:18,borderRadius:5,border:`2px solid ${checklist[k]?C.success:C.border}`,
         background:checklist[k]?C.success:"#fff",display:"flex",alignItems:"center",
-        justifyContent:"center",flexShrink:0,transition:"all .15s" }}>
+        justifyContent:"center",flexShrink:0,transition:"all .15s"}}>
         {checklist[k]&&<Check size={12} color="#fff"/>}
       </div>
-      <span style={{ fontSize:13,color:checklist[k]?"#15803D":C.text,fontWeight:checklist[k]?600:400 }}>{label}</span>
+      <span style={{fontSize:13,color:checklist[k]?"#15803D":C.text,fontWeight:checklist[k]?600:400}}>{label}</span>
     </label>
   );
 
-  const IF = ({label,value,full}) => value ? (
-    <div style={{ gridColumn:full?"1/-1":"auto",marginBottom:10 }}>
-      <div style={{ fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2 }}>{label}</div>
-      <div style={{ fontSize:13.5,color:C.text,lineHeight:1.6 }}>{value}</div>
+  const IF=({label,value,full})=>value?(
+    <div style={{gridColumn:full?"1/-1":"auto",marginBottom:10}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
+      <div style={{fontSize:13.5,color:C.text,lineHeight:1.6}}>{value}</div>
     </div>
-  ) : null;
+  ):null;
 
-  return (
-    <div onClick={e=>e.target===e.currentTarget&&onClose()}
-      style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,
-        display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(3px)" }}>
-      <div style={{ width:"93vw",height:"93vh",background:"#fff",borderRadius:18,
-        display:"flex",flexDirection:"column",overflow:"hidden",
-        boxShadow:"0 32px 80px rgba(0,0,0,0.3)",position:"relative" }}>
+  /* ── SHARED: top bar ── */
+  const TopBar = ()=>(
+    <div style={{display:"flex",alignItems:"center",gap:IS_MOBILE?8:14,
+      padding:IS_MOBILE?"10px 14px":"12px 20px",
+      borderBottom:`1px solid ${C.border}`,background:"#FAFBFF",flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <button onClick={()=>onNavigate(currentIdx-1)} disabled={currentIdx===0}
+          style={{width:IS_MOBILE?28:30,height:IS_MOBILE?28:30,borderRadius:7,border:`1px solid ${C.border}`,
+            background:"#fff",cursor:currentIdx===0?"not-allowed":"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center",opacity:currentIdx===0?0.35:1}}>
+          <ChevronLeft size={IS_MOBILE?13:15} color={C.text}/>
+        </button>
+        <span style={{fontSize:11,color:C.muted,fontWeight:500,minWidth:IS_MOBILE?36:52,textAlign:"center"}}>
+          {currentIdx+1}/{total}
+        </span>
+        <button onClick={()=>onNavigate(currentIdx+1)} disabled={currentIdx===total-1}
+          style={{width:IS_MOBILE?28:30,height:IS_MOBILE?28:30,borderRadius:7,border:`1px solid ${C.border}`,
+            background:"#fff",cursor:currentIdx===total-1?"not-allowed":"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center",opacity:currentIdx===total-1?0.35:1}}>
+          <ChevronRight size={IS_MOBILE?13:15} color={C.text}/>
+        </button>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:IS_MOBILE?6:10,flex:1,minWidth:0}}>
+        <h2 style={{fontSize:IS_MOBILE?14:17,fontWeight:700,color:C.text,margin:0,
+          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          {c.name}
+        </h2>
+        {!IS_MOBILE&&c.position&&<span style={{fontSize:13,color:C.muted}}>· {c.position}</span>}
+        <span style={{background:stageInfo.bg,color:stageInfo.color,
+          border:`1px solid ${stageInfo.color}30`,borderRadius:99,
+          padding:IS_MOBILE?"2px 8px":"3px 12px",fontSize:IS_MOBILE?10:12,fontWeight:600,flexShrink:0}}>
+          {stageInfo.label}
+        </span>
+      </div>
+      <button onClick={onClose} style={{border:"none",background:"transparent",cursor:"pointer",color:C.muted,flexShrink:0}}>
+        <X size={IS_MOBILE?16:18}/>
+      </button>
+    </div>
+  );
 
-        {toast&&<div style={{ position:"absolute",top:14,left:"50%",transform:"translateX(-50%)",zIndex:10,
-          background:toast.t==="warn"?"#FEF3C7":"#DCFCE7",color:toast.t==="warn"?"#92400E":"#065F46",
-          border:`1px solid ${toast.t==="warn"?"#FDE68A":"#86EFAC"}`,borderRadius:99,
-          padding:"6px 18px",fontSize:13,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,0.1)"}}>
-          {toast.msg}
-        </div>}
-
-        {/* TOP BAR */}
-        <div style={{ display:"flex",alignItems:"center",gap:14,padding:"12px 20px",
-          borderBottom:`1px solid ${C.border}`,background:"#FAFBFF",flexShrink:0 }}>
-          <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-            <button onClick={()=>onNavigate(currentIdx-1)} disabled={currentIdx===0}
-              style={{ width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,
-                background:"#fff",cursor:currentIdx===0?"not-allowed":"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center",opacity:currentIdx===0?0.35:1 }}>
-              <ChevronLeft size={15} color={C.text}/>
-            </button>
-            <span style={{ fontSize:12,color:C.muted,fontWeight:500,minWidth:52,textAlign:"center" }}>
-              {currentIdx+1} / {total}
-            </span>
-            <button onClick={()=>onNavigate(currentIdx+1)} disabled={currentIdx===total-1}
-              style={{ width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,
-                background:"#fff",cursor:currentIdx===total-1?"not-allowed":"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center",opacity:currentIdx===total-1?0.35:1 }}>
-              <ChevronRight size={15} color={C.text}/>
-            </button>
-          </div>
-          <div style={{ display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0 }}>
-            <h2 style={{ fontSize:17,fontWeight:700,color:C.text,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.name}</h2>
-            {c.position&&<span style={{ fontSize:13,color:C.muted }}>· {c.position}</span>}
-            <span style={{ background:stageInfo.bg,color:stageInfo.color,border:`1px solid ${stageInfo.color}30`,
-              borderRadius:99,padding:"3px 12px",fontSize:12,fontWeight:600,flexShrink:0 }}>{stageInfo.label}</span>
-          </div>
-          <button onClick={onClose} style={{ border:"none",background:"transparent",cursor:"pointer",color:C.muted,flexShrink:0 }}>
-            <X size={18}/>
+  /* ── SHARED: bottom bar ── */
+  const BottomBar = ()=>(
+    <div style={{display:"flex",alignItems:"center",
+      justifyContent:IS_MOBILE?"space-between":"space-between",
+      padding:IS_MOBILE?"10px 14px":"12px 20px",
+      borderTop:`1px solid ${C.border}`,background:"#FAFBFF",flexShrink:0,gap:8,
+      flexWrap:IS_MOBILE?"nowrap":"nowrap"}}>
+      <button onClick={discard} disabled={saving||c.status==="Descartado"}
+        style={{background:"transparent",color:C.danger,border:`1.5px solid ${C.danger}30`,
+          borderRadius:10,padding:IS_MOBILE?"7px 10px":"8px 16px",cursor:"pointer",
+          fontSize:IS_MOBILE?12:14,fontWeight:600,fontFamily:"inherit",
+          opacity:c.status==="Descartado"?0.4:1,flexShrink:0}}>
+        Descartar
+      </button>
+      <div style={{display:"flex",gap:IS_MOBILE?6:10}}>
+        <button onClick={saveNotes} disabled={saving}
+          style={{background:"#fff",color:C.text,border:`1.5px solid ${C.border}`,borderRadius:10,
+            padding:IS_MOBILE?"7px 10px":"8px 18px",cursor:"pointer",
+            fontSize:IS_MOBILE?12:14,fontWeight:600,fontFamily:"inherit",
+            display:"flex",alignItems:"center",gap:5}}>
+          {saving?<><Spinner size={12}/> Guardando...</>:<><Check size={12}/> {IS_MOBILE?"Guardar":"Guardar notas"}</>}
+        </button>
+        {nextStage&&(
+          <button onClick={approve} disabled={approving||saving}
+            style={{background:`linear-gradient(135deg,${C.accent},${C.primary})`,color:"#fff",
+              border:"none",borderRadius:10,
+              padding:IS_MOBILE?"7px 10px":"8px 20px",cursor:"pointer",
+              fontSize:IS_MOBILE?12:14,fontWeight:700,fontFamily:"inherit",
+              display:"flex",alignItems:"center",gap:5,
+              boxShadow:"0 4px 14px rgba(13,148,136,0.3)"}}>
+            {approving?<><Spinner size={12}/> Moviendo...</>:<>Aprobar{IS_MOBILE?"":" → "+nextStage}<ChevronRight size={12}/></>}
           </button>
-        </div>
-
-        {/* BODY */}
-        <div style={{ display:"grid",gridTemplateColumns:"40% 60%",flex:1,overflow:"hidden",minHeight:0 }}>
-
-          {/* LEFT */}
-          <div style={{ background:"#F8FAFF",borderRight:`1px solid ${C.border}`,overflowY:"auto" }}>
-            {/* Smart summary */}
-            <div style={{ padding:"14px 18px",background:`linear-gradient(135deg,${C.primary},#2563EB)`,color:"#fff" }}>
-              <div style={{ fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",opacity:.7,marginBottom:8 }}>Resumen del perfil</div>
-              <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:10 }}>
-                <div style={{ position:"relative",width:48,height:48,flexShrink:0 }}>
-                  <svg width="48" height="48" viewBox="0 0 48 48">
-                    <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="5"/>
-                    <circle cx="24" cy="24" r="20" fill="none" stroke="#fff" strokeWidth="5"
-                      strokeDasharray={`${(sm.score/100)*125.6} 125.6`} strokeLinecap="round" transform="rotate(-90 24 24)"/>
-                  </svg>
-                  <div style={{ position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700 }}>{sm.score}%</div>
-                </div>
-                <div>
-                  <div style={{ fontSize:13,fontWeight:600 }}>Perfil completado</div>
-                  <div style={{ fontSize:11,opacity:.75 }}>{sm.score>=80?"Candidato documentado":sm.score>=60?"Información básica":"Perfil incompleto"}</div>
-                </div>
-              </div>
-              {sm.pros.length>0&&<div style={{ display:"flex",flexWrap:"wrap",gap:4,marginBottom:6 }}>
-                {sm.pros.map(p=><span key={p} style={{ background:"rgba(255,255,255,0.18)",borderRadius:99,padding:"2px 9px",fontSize:11 }}>✓ {p}</span>)}
-              </div>}
-              {sm.skills.slice(0,5).length>0&&<div style={{ display:"flex",flexWrap:"wrap",gap:4 }}>
-                {sm.skills.slice(0,5).map(s=><span key={s} style={{ background:"rgba(255,255,255,0.12)",borderRadius:99,padding:"2px 8px",fontSize:11 }}>{s}</span>)}
-              </div>}
-              {sm.cons.length>0&&<div style={{ marginTop:7,fontSize:11,opacity:.7 }}>{sm.cons.map(a=>"⚠ "+a).join("  ")}</div>}
-            </div>
-
-            {/* Personal info */}
-            <div style={{ padding:"14px 18px",borderBottom:`1px solid ${C.border}` }}>
-              <div style={{ fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10 }}>Información personal</div>
-              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px" }}>
-                <IF label="Correo" value={c.email}/><IF label="Teléfono" value={c.phone}/>
-                <IF label="Cédula" value={fd.cedula}/><IF label="Nacimiento" value={fd.nacimiento}/>
-                <IF label="Estado civil" value={fd.civil}/><IF label="Ciudad" value={fd.ciudad}/>
-                <IF label="Vehículo" value={fd.vehiculo}/><IF label="Salario" value={fd.salario}/>
-              </div>
-            </div>
-
-            {/* Formación */}
-            <div style={{ padding:"14px 18px",borderBottom:`1px solid ${C.border}` }}>
-              <div style={{ fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10 }}>Formación y experiencia</div>
-              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px" }}>
-                <IF label="Título" value={fd.titulo}/><IF label="Maestría" value={fd.maestria}/>
-                <IF label="Odoo" value={fd.odoo}/>
-              </div>
-              <IF label="Herramientas" value={fd.herramientas} full/>
-              <IF label="Mayor logro" value={fd.logro} full/>
-              <IF label="Virtudes" value={fd.virtudes} full/>
-            </div>
-
-            {/* Checklist */}
-            <div style={{ padding:"14px 18px",borderBottom:`1px solid ${C.border}` }}>
-              <div style={{ fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10 }}>Checklist de validación</div>
-              <CL k="cv"  label="CV revisado"/>
-              <CL k="exp" label="Experiencia validada"/>
-              <CL k="edu" label="Formación validada"/>
-              <CL k="sal" label="Salario compatible"/>
-              <CL k="dis" label="Disponibilidad confirmada"/>
-              <div style={{ fontSize:11,color:C.muted,marginTop:5,textAlign:"right" }}>
-                {Object.values(checklist).filter(Boolean).length}/5 validados
-              </div>
-            </div>
-
-            {/* Notas internas */}
-            <div style={{ padding:"14px 18px",flex:1 }}>
-              <div style={{ fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8 }}>Notas internas</div>
-              <textarea value={notes} onChange={e=>setNotes(e.target.value)}
-                placeholder="Observaciones, impresiones sobre el candidato..."
-                style={{ width:"100%",minHeight:80,border:`1.5px solid ${C.border}`,borderRadius:10,
-                  padding:"9px 12px",fontSize:13,color:C.text,resize:"vertical",
-                  fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",background:"#fff" }}
-                onFocus={e=>e.target.style.borderColor=C.accent}
-                onBlur={e=>e.target.style.borderColor=C.border}/>
-            </div>
-          </div>
-
-          {/* RIGHT — PDF Viewer */}
-          <div style={{ display:"flex",flexDirection:"column",overflow:"hidden" }}>
-            <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",
-              padding:"9px 14px",borderBottom:`1px solid ${C.border}`,background:"#FAFBFF",flexShrink:0 }}>
-              <span style={{ fontSize:13,fontWeight:600,color:C.text }}>📎 {c.cvFileName||"Hoja de vida"}</span>
-              {c.cvUrl&&<div style={{ display:"flex",gap:8 }}>
-                <button onClick={async()=>{ let u=cvSrc; if(!u&&c.cvUrl&&!c.cvUrl.startsWith("data:"))u=await getSignedUrl(c.cvUrl); if(u)window.open(u,"_blank"); }}
-                  style={{ background:`${C.info}15`,color:C.info,border:"none",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit" }}>
-                  Nueva pestaña
-                </button>
-                <button onClick={async()=>{ let u=cvSrc; if(!u&&c.cvUrl&&!c.cvUrl.startsWith("data:"))u=await getSignedUrl(c.cvUrl); if(u){const a=document.createElement("a");a.href=u;a.download=c.cvFileName||"CV.pdf";document.body.appendChild(a);a.click();document.body.removeChild(a);} }}
-                  style={{ background:`${C.accent}15`,color:C.accent,border:"none",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit" }}>
-                  Descargar
-                </button>
-              </div>}
-            </div>
-            <div style={{ flex:1,overflow:"hidden",position:"relative" }}>
-              {!c.cvUrl ? (
-                <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:C.muted,gap:12 }}>
-                  <div style={{ fontSize:48,opacity:.3 }}>📄</div>
-                  <div style={{ fontSize:15,fontWeight:500 }}>Sin CV adjunto</div>
-                </div>
-              ) : cvLoad ? (
-                <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100%",gap:10,color:C.muted }}>
-                  <Spinner size={22}/> Cargando CV...
-                </div>
-              ) : cvSrc ? (
-                <iframe src={cvSrc} title="CV" width="100%" height="100%" style={{ border:"none",display:"block" }}/>
-              ) : (
-                <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:C.muted,gap:12 }}>
-                  <div style={{ fontSize:36 }}>⚠️</div>
-                  <button onClick={()=>{ setCvLoad(true); getSignedUrl(c.cvUrl).then(u=>{setCvSrc(u);setCvLoad(false);}).catch(()=>setCvLoad(false)); }}
-                    style={{ background:C.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13 }}>
-                    Reintentar
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* BOTTOM BAR */}
-        <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",
-          padding:"12px 20px",borderTop:`1px solid ${C.border}`,background:"#FAFBFF",flexShrink:0,gap:10 }}>
-          <button onClick={discard} disabled={saving||c.status==="Descartado"}
-            style={{ background:"transparent",color:C.danger,border:`1.5px solid ${C.danger}30`,
-              borderRadius:10,padding:"8px 16px",cursor:"pointer",fontSize:14,fontWeight:600,fontFamily:"inherit",
-              opacity:c.status==="Descartado"?0.4:1 }}>
-            Descartar
-          </button>
-          <div style={{ display:"flex",gap:10 }}>
-            <button onClick={saveNotes} disabled={saving}
-              style={{ background:"#fff",color:C.text,border:`1.5px solid ${C.border}`,borderRadius:10,
-                padding:"8px 18px",cursor:"pointer",fontSize:14,fontWeight:600,fontFamily:"inherit",
-                display:"flex",alignItems:"center",gap:7 }}>
-              {saving?<><Spinner size={14}/> Guardando...</>:<><Check size={14}/> Guardar notas</>}
-            </button>
-            {nextStage&&<button onClick={approve} disabled={approving||saving}
-              style={{ background:`linear-gradient(135deg,${C.accent},${C.primary})`,color:"#fff",
-                border:"none",borderRadius:10,padding:"8px 20px",cursor:"pointer",fontSize:14,
-                fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:7,
-                boxShadow:"0 4px 14px rgba(13,148,136,0.3)" }}>
-              {approving?<><Spinner size={14}/> Moviendo...</>:<>Aprobar → {nextStage} <ChevronRight size={14}/></>}
-            </button>}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
+
+  /* ── LEFT PANEL content (shared) ── */
+  const ProfilePanel = ()=>(
+    <div style={{overflowY:"auto",height:"100%"}}>
+      {/* Smart summary */}
+      <div style={{padding:"14px 16px",background:`linear-gradient(135deg,${C.primary},#2563EB)`,color:"#fff"}}>
+        <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",opacity:.7,marginBottom:8}}>Resumen del perfil</div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+          <div style={{position:"relative",width:44,height:44,flexShrink:0}}>
+            <svg width="44" height="44" viewBox="0 0 44 44">
+              <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="5"/>
+              <circle cx="22" cy="22" r="18" fill="none" stroke="#fff" strokeWidth="5"
+                strokeDasharray={`${(sm.score/100)*113} 113`} strokeLinecap="round" transform="rotate(-90 22 22)"/>
+            </svg>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{sm.score}%</div>
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:600}}>Perfil completado</div>
+            <div style={{fontSize:11,opacity:.75}}>{sm.score>=80?"Candidato documentado":sm.score>=60?"Información básica":"Perfil incompleto"}</div>
+          </div>
+        </div>
+        {sm.pros.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
+          {sm.pros.map(p=><span key={p} style={{background:"rgba(255,255,255,0.18)",borderRadius:99,padding:"2px 9px",fontSize:11}}>✓ {p}</span>)}
+        </div>}
+        {sm.skills.slice(0,4).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+          {sm.skills.slice(0,4).map(s=><span key={s} style={{background:"rgba(255,255,255,0.12)",borderRadius:99,padding:"2px 8px",fontSize:11}}>{s}</span>)}
+        </div>}
+        {sm.cons.length>0&&<div style={{marginTop:7,fontSize:11,opacity:.7}}>{sm.cons.map(a=>"⚠ "+a).join("  ")}</div>}
+      </div>
+      {/* Info */}
+      <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Información personal</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
+          <IF label="Correo" value={c.email}/><IF label="Teléfono" value={c.phone}/>
+          <IF label="Cédula" value={fd.cedula}/><IF label="Nacimiento" value={fd.nacimiento}/>
+          <IF label="Estado civil" value={fd.civil}/><IF label="Ciudad" value={fd.ciudad}/>
+          <IF label="Vehículo" value={fd.vehiculo}/><IF label="Salario" value={fd.salario}/>
+        </div>
+      </div>
+      <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Formación y experiencia</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
+          <IF label="Título" value={fd.titulo}/><IF label="Maestría" value={fd.maestria}/>
+          <IF label="Odoo" value={fd.odoo}/>
+        </div>
+        <IF label="Herramientas" value={fd.herramientas} full/>
+        <IF label="Mayor logro" value={fd.logro} full/>
+        <IF label="Virtudes" value={fd.virtudes} full/>
+      </div>
+      <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Checklist de validación</div>
+        <CL k="cv" label="CV revisado"/>
+        <CL k="exp" label="Experiencia validada"/>
+        <CL k="edu" label="Formación validada"/>
+        <CL k="sal" label="Salario compatible"/>
+        <CL k="dis" label="Disponibilidad confirmada"/>
+        <div style={{fontSize:11,color:C.muted,marginTop:5,textAlign:"right"}}>{Object.values(checklist).filter(Boolean).length}/5 validados</div>
+      </div>
+      <div style={{padding:"14px 16px"}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Notas internas</div>
+        <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+          placeholder="Observaciones sobre el candidato..."
+          style={{width:"100%",minHeight:80,border:`1.5px solid ${C.border}`,borderRadius:10,
+            padding:"9px 12px",fontSize:13,color:C.text,resize:"vertical",
+            fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",background:"#fff"}}
+          onFocus={e=>e.target.style.borderColor=C.accent}
+          onBlur={e=>e.target.style.borderColor=C.border}/>
+      </div>
+    </div>
+  );
+
+  /* ── RIGHT PANEL content (shared) ── */
+  const CvPanel = ()=>(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+        padding:"9px 14px",borderBottom:`1px solid ${C.border}`,background:"#FAFBFF",flexShrink:0}}>
+        <span style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
+          📎 {c.cvFileName||"Hoja de vida"}
+        </span>
+        {c.cvUrl&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+          <button onClick={async()=>{let u=cvSrc;if(!u&&c.cvUrl&&!c.cvUrl.startsWith("data:"))u=await getSignedUrl(c.cvUrl);if(u)window.open(u,"_blank");}}
+            style={{background:`${C.info}15`,color:C.info,border:"none",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>
+            Abrir
+          </button>
+          <button onClick={async()=>{let u=cvSrc;if(!u&&c.cvUrl&&!c.cvUrl.startsWith("data:"))u=await getSignedUrl(c.cvUrl);if(u){const a=document.createElement("a");a.href=u;a.download=c.cvFileName||"CV.pdf";document.body.appendChild(a);a.click();document.body.removeChild(a);}}}
+            style={{background:`${C.accent}15`,color:C.accent,border:"none",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>
+            Descargar
+          </button>
+        </div>}
+      </div>
+      <div style={{flex:1,overflow:"hidden",position:"relative"}}>
+        {!c.cvUrl?(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:C.muted,gap:10}}>
+            <div style={{fontSize:40,opacity:.3}}>📄</div>
+            <div style={{fontSize:14,fontWeight:500}}>Sin CV adjunto</div>
+          </div>
+        ):cvLoad?(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",gap:10,color:C.muted}}>
+            <Spinner size={22}/> Cargando CV...
+          </div>
+        ):cvSrc?(
+          <iframe src={cvSrc} title="CV" width="100%" height="100%" style={{border:"none",display:"block"}}/>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:C.muted,gap:12}}>
+            <div style={{fontSize:36}}>⚠️</div>
+            <button onClick={()=>{setCvLoad(true);getSignedUrl(c.cvUrl).then(u=>{setCvSrc(u);setCvLoad(false);}).catch(()=>setCvLoad(false));}}
+              style={{background:C.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
+              Reintentar
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:IS_MOBILE?"#fff":"rgba(0,0,0,0.65)",
+        zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",
+        backdropFilter:IS_MOBILE?"none":"blur(3px)"}}>
+
+      {toast&&<div style={{position:"fixed",top:IS_MOBILE?60:14,left:"50%",transform:"translateX(-50%)",zIndex:1010,
+        background:toast.t==="warn"?"#FEF3C7":"#DCFCE7",color:toast.t==="warn"?"#92400E":"#065F46",
+        border:`1px solid ${toast.t==="warn"?"#FDE68A":"#86EFAC"}`,borderRadius:99,
+        padding:"6px 18px",fontSize:13,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,0.1)"}}>
+        {toast.msg}
+      </div>}
+
+      {IS_MOBILE ? (
+        /* ════ MOBILE: full screen with tabs ════ */
+        <div style={{position:"fixed",inset:0,background:"#fff",display:"flex",flexDirection:"column",zIndex:1000}}>
+          <TopBar/>
+          {/* Tab switcher */}
+          <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,background:"#fff",flexShrink:0}}>
+            {["perfil","cv"].map(tab=>(
+              <button key={tab} onClick={()=>setMobileTab(tab)}
+                style={{flex:1,padding:"11px 0",border:"none",
+                  background:"transparent",cursor:"pointer",fontFamily:"inherit",
+                  fontSize:14,fontWeight:mobileTab===tab?700:400,
+                  color:mobileTab===tab?C.accent:C.muted,
+                  borderBottom:`2.5px solid ${mobileTab===tab?C.accent:"transparent"}`,
+                  transition:"all .15s"}}>
+                {tab==="perfil"?"👤 Perfil":"📄 CV"}
+              </button>
+            ))}
+          </div>
+          {/* Tab content */}
+          <div style={{flex:1,overflow:"hidden",background:"#F8FAFF"}}>
+            {mobileTab==="perfil" ? <ProfilePanel/> : <CvPanel/>}
+          </div>
+          <BottomBar/>
+        </div>
+      ) : (
+        /* ════ DESKTOP: two-column modal ════ */
+        <div style={{width:"93vw",height:"93vh",background:"#fff",borderRadius:18,
+          display:"flex",flexDirection:"column",overflow:"hidden",
+          boxShadow:"0 32px 80px rgba(0,0,0,0.3)",position:"relative"}}>
+          <TopBar/>
+          <div style={{display:"grid",gridTemplateColumns:"40% 60%",flex:1,overflow:"hidden",minHeight:0}}>
+            <div style={{background:"#F8FAFF",borderRight:`1px solid ${C.border}`,overflow:"hidden"}}>
+              <ProfilePanel/>
+            </div>
+            <div style={{overflow:"hidden"}}>
+              <CvPanel/>
+            </div>
+          </div>
+          <BottomBar/>
+        </div>
+      )}
+    </div>
+  );
 }
+
 
 function PipelineView({ candidates, setCandidates, refreshCandidates }) {
   const [modalIdx, setModalIdx]           = useState(null);
@@ -1910,8 +2060,21 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
           <h3 style={{ color:C.text,marginBottom:8 }}>Pipeline vacío</h3>
           <p style={{ color:C.muted,fontSize:13 }}>Agrega candidatos para verlos aquí.</p>
         </div>
+      ) : IS_MOBILE ? (
+        /* ── MOBILE: vertical list by stage ── */
+        <div style={{ display:"flex", flexDirection:"column", gap:12, paddingBottom:8 }}>
+          {PIPE.map(stage => (
+            <MobilePipelineStage
+              key={stage.id}
+              stage={stage}
+              cards={byStage[stage.id]||[]}
+              onOpenModal={openModal}
+            />
+          ))}
+        </div>
       ) : (
-        <div className="pipeline-board" style={{ display:"grid",gridTemplateColumns:`repeat(${PIPE.length},1fr)`,gap:8,flex:1,minHeight:0,alignItems:"start",minWidth:`repeat(${PIPE.length},180px)` }}>
+        /* ── DESKTOP: kanban columns ── */
+        <div style={{ display:"grid", gridTemplateColumns:`repeat(${PIPE.length},1fr)`, gap:8, flex:1, minHeight:0, alignItems:"start" }}>
           {PIPE.map(stage=>{
             const cards=byStage[stage.id]||[];
             return (
@@ -1929,8 +2092,8 @@ function PipelineView({ candidates, setCandidates, refreshCandidates }) {
                       style={{ background:"#fff",borderRadius:8,padding:"10px",marginBottom:5,
                         border:"1px solid #EBEBEB",cursor:"pointer",transition:"all .15s",
                         boxShadow:"0 1px 2px rgba(0,0,0,0.04)" }}
-                      onMouseEnter={e=>{ e.currentTarget.style.borderColor=C.accent; e.currentTarget.style.boxShadow="0 3px 8px rgba(0,0,0,0.1)"; e.currentTarget.style.transform="translateY(-1px)"; }}
-                      onMouseLeave={e=>{ e.currentTarget.style.borderColor="#EBEBEB"; e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)"; e.currentTarget.style.transform="translateY(0)"; }}>
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor=C.accent;e.currentTarget.style.boxShadow="0 3px 8px rgba(0,0,0,0.1)";e.currentTarget.style.transform="translateY(-1px)";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#EBEBEB";e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.transform="translateY(0)";}}>
                       <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:6 }}>
                         <div style={{ width:26,height:26,borderRadius:"50%",flexShrink:0,
                           background:`linear-gradient(135deg,${C.accent},${C.primary})`,color:"#fff",
@@ -2005,7 +2168,7 @@ function FormsView({ formSubmissions, refreshForms }) {
           <h3 style={{ color: C.text, marginBottom: 8 }}>Sin formularios recibidos aún</h3>
           <p style={{ color: C.muted, fontSize: 14 }}>Cuando una empresa envíe su solicitud de cargo, aparecerá aquí.</p>
         </Card>
-        : <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20, alignItems: "start" }}>
+        : <div style={{ display: IS_MOBILE ? "block" : "grid", gridTemplateColumns: "300px 1fr", gap: 20, alignItems: "start" }}>
           <Card style={{ padding: 0, overflow: "hidden" }}>
             {[...formSubmissions].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)).map(f => (
               <div key={f.id} onClick={() => setSelected(f)}
@@ -2163,6 +2326,7 @@ function CompaniesView({ companies, refreshCompanies }) {
           <Btn onClick={openAdd}><Plus size={16} /> Agregar primera empresa</Btn>
         </Card>
         : <Card style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
@@ -2195,6 +2359,7 @@ function CompaniesView({ companies, refreshCompanies }) {
               ))}
             </tbody>
           </table>
+          </div>
         </Card>}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? "Editar empresa" : "Nueva empresa"}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2466,7 +2631,7 @@ function PositionRequestsView() {
         </Card>
       ) : (
         <Card style={{ padding: 0, overflow: "hidden" }}>
-          <div className="table-wrap" style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
@@ -2981,7 +3146,7 @@ function EvaluacionesView() {
             </span>
             <Btn variant="secondary" size="sm" onClick={load}><RefreshCw size={13}/> Actualizar</Btn>
           </div>
-          <div className="table-wrap" style={{ overflowX:"auto" }}>
+          <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
             <table style={{ width:"100%",borderCollapse:"collapse" }}>
               <thead>
                 <tr style={{ background:C.bg,borderBottom:`1px solid ${C.border}` }}>
